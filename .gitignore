@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data (keep folder structure only)
+data/**
+!data/**/
+!data/**/.gitkeep
