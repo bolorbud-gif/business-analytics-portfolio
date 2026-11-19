@@ -2,8 +2,8 @@
 
 One style for every figure: light surface, recessive grid and axes, thin marks, at most
 three categorical colors per chart (blue, orange, aqua: validated as distinguishable for
-colour-blind readers in every pair), and a title that states the finding. Figures for
-the docs are saved to docs/figures/ with save().
+colour-blind readers in every pair), labelled axes, and a title that states the finding.
+Figures are saved to docs/figures/ by save() as 300 dpi PNG plus vector SVG.
 """
 
 from pathlib import Path
@@ -71,14 +71,19 @@ def _source(fig, text: str) -> None:
 
 
 def save(fig, name: str, folder: Path = FIGURES) -> Path:
-    """Save a figure as PNG (150 dpi) in docs/figures/ or another folder; returns the path."""
+    """Save a figure as 300 dpi PNG and vector SVG in docs/figures/ (or `folder`).
+
+    Returns the PNG path; the SVG sits next to it with the same name.
+    """
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{name}.png"
-    fig.savefig(path, dpi=150, bbox_inches="tight")
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    fig.savefig(path.with_suffix(".svg"), bbox_inches="tight")
     return path
 
 
-def market_share_bars(shares: pd.DataFrame, title: str, subtitle: str, source: str):
+def market_share_bars(shares: pd.DataFrame, title: str, subtitle: str, source: str,
+                      ylabel: str = "Buying country"):
     """Horizontal bars of each country's share (output of exploratory.market_shares)."""
     apply_style()
     s = shares["share"][::-1]
@@ -88,6 +93,7 @@ def market_share_bars(shares: pd.DataFrame, title: str, subtitle: str, source: s
     for y, v in enumerate(s.values * 100):
         ax.text(v + 0.6, y, f"{v:.1f}%", va="center", fontsize=9, color=INK_2)
     ax.set_xlabel("Share of China's exports by weight (%)")
+    ax.set_ylabel(ylabel)
     ax.grid(axis="y", visible=False)
     ax.set_xlim(0, s.max() * 100 * 1.15)
     _titles(fig, title, subtitle)
@@ -96,7 +102,8 @@ def market_share_bars(shares: pd.DataFrame, title: str, subtitle: str, source: s
     return fig
 
 
-def change_bars(changes: pd.Series, title: str, subtitle: str, source: str):
+def change_bars(changes: pd.Series, title: str, subtitle: str, source: str,
+                xlabel: str = "Measure"):
     """Percent changes as bars: blue up, red down, from a zero baseline."""
     apply_style()
     fig, ax = plt.subplots(figsize=(7, 3.6))
@@ -107,6 +114,7 @@ def change_bars(changes: pd.Series, title: str, subtitle: str, source: str):
         ax.text(x, v + (1.2 if v >= 0 else -1.2), f"{v:+.1f}%", ha="center",
                 va="bottom" if v >= 0 else "top", fontsize=10, color=INK, fontweight="bold")
     ax.set_ylabel("Change (%)")
+    ax.set_xlabel(xlabel)
     ax.grid(axis="x", visible=False)
     lo, hi = min(changes.min(), 0), max(changes.max(), 0)
     ax.set_ylim(lo * 1.3 - 2, hi * 1.3 + 4)
@@ -117,7 +125,7 @@ def change_bars(changes: pd.Series, title: str, subtitle: str, source: str):
 
 
 def line_trend(df: pd.DataFrame, x: str, series: list[str], labels: list[str], ylabel: str,
-               title: str, subtitle: str, source: str):
+               title: str, subtitle: str, source: str, xlabel: str = "Year"):
     """Up to three lines on one axis, each labelled at its end and in the legend."""
     apply_style()
     fig, ax = plt.subplots(figsize=(8, 4.2))
@@ -133,6 +141,7 @@ def line_trend(df: pd.DataFrame, x: str, series: list[str], labels: list[str], y
     for col, label, color in zip(series, labels, SERIES):
         ax.plot(df[x], df[col], color=color, marker="o", markersize=6, label=label)
     ax.set_ylabel(ylabel)
+    ax.set_xlabel(xlabel)
     ax.set_ylim(0, None)
     ax.set_xticks(df[x])
     ax.set_xlim(df[x].min() - 0.3, df[x].max() + 1.6)
@@ -160,8 +169,8 @@ def confounding_scatter(raw: pd.DataFrame, x: str, y: str, group: str, group_ord
     a.set_xlabel(xlabel)
     a.set_ylabel(ylabel)
     a.set_title(raw_title, loc="left", fontsize=10.5, color=INK)
-    a.legend(title="Country size (total electricity generation)", title_fontsize=8.5,
-             fontsize=8.5, loc="upper center", bbox_to_anchor=(0.5, -0.24), ncol=3)
+    a.legend(title="Country size (total electricity generation)", title_fontsize=9,
+             fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.24), ncol=3)
     b.scatter(partial["x_resid"], partial["y_resid"], s=48, color=BLUE, edgecolor=SURFACE,
               linewidth=1, alpha=0.9, zorder=3)
     b.axhline(0, color=AXIS, linewidth=1)
@@ -224,7 +233,8 @@ def log_histogram(values: pd.Series, xlabel: str, title: str, subtitle: str, sou
 
 
 def group_strip(df: pd.DataFrame, value: str, group: str, order: list[str], ylabel: str,
-                title: str, subtitle: str, source: str, tick_labels: list[str] | None = None):
+                title: str, subtitle: str, source: str, tick_labels: list[str] | None = None,
+                xlabel: str = ""):
     """Every observation per group on a log scale, with the median marked."""
     apply_style()
     d = df[df[value] > 0]
@@ -240,7 +250,7 @@ def group_strip(df: pd.DataFrame, value: str, group: str, order: list[str], ylab
     _log_axis(ax, "y")
     ax.set_xticks(range(len(order)), tick_labels or order)
     ax.set_xlim(-0.6, len(order) - 0.1 + 0.6)
-    ax.set_xlabel("")
+    ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.xaxis.grid(False)
     ax.yaxis.grid(True)
@@ -256,7 +266,8 @@ def pair_plot(df: pd.DataFrame, columns: list[str], labels: list[str], hue: str,
     apply_style()
     d = df[columns].apply(lambda s: np.log10(s.where(s > 0))).rename(columns=dict(zip(columns, labels)))
     d[hue] = df[hue].astype(str)
-    grid = sns.pairplot(d.dropna(), hue=hue, hue_order=hue_order, palette=SERIES[:len(hue_order)],
+    n = len(hue_order)
+    grid = sns.pairplot(d.dropna(), hue=hue, hue_order=hue_order, palette=SERIES[:n],
                         corner=True, height=2.1, diag_kind="kde",
                         plot_kws={"s": 28, "edgecolor": SURFACE, "linewidth": 0.6, "alpha": 0.85},
                         diag_kws={"fill": True, "alpha": 0.3, "linewidth": 1.5})
@@ -275,7 +286,8 @@ def pair_plot(df: pd.DataFrame, columns: list[str], labels: list[str], hue: str,
 
 
 def coefficient_plot(models: dict[str, pd.DataFrame], terms: dict[str, str], title: str,
-                     subtitle: str, source: str, xlabel: str = "Elasticity (95% CI)"):
+                     subtitle: str, source: str, xlabel: str = "Elasticity (95% CI)",
+                     ylabel: str = "Predictor"):
     """Estimates with 95% intervals for selected terms, one colour per model.
 
     models: {model name: output of statistical.tidy_coefficients}; terms: {term: label}.
@@ -292,12 +304,13 @@ def coefficient_plot(models: dict[str, pd.DataFrame], terms: dict[str, str], tit
             y = len(terms) - 1 - i - off
             ax.plot([row["ci_low"], row["ci_high"]], [y, y], color=color, linewidth=2)
             ax.scatter(row["coef"], y, s=64, color=color, edgecolor=SURFACE, linewidth=1.5,
-                       zorder=3, label=name if i == 0 or term == list(terms)[0] else None)
+                       zorder=3, label=name)
             ax.annotate(f"{row['coef']:.2f}", (row["ci_high"], y), xytext=(6, 0),
                         textcoords="offset points", va="center", fontsize=9, color=INK_2)
     ax.axvline(0, color=AXIS, linewidth=1.2)
     ax.set_yticks(range(len(terms)), labels[::-1])
     ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
     ax.grid(axis="y", visible=False)
     handles, names = ax.get_legend_handles_labels()
     seen = dict(zip(names, handles))

@@ -81,26 +81,26 @@ Charts for the exploratory analysis (Matplotlib + Seaborn).
 
 - **`apply_style`** `def apply_style() -> None`
   Seaborn theme with the project's colours and recessive grid (applies to Matplotlib too).
-- **`change_bars`** `def change_bars(changes: pandas.Series, title: str, subtitle: str, source: str)`
+- **`change_bars`** `def change_bars(changes: pandas.Series, title: str, subtitle: str, source: str, xlabel: str = 'Measure')`
   Percent changes as bars: blue up, red down, from a zero baseline.
-- **`coefficient_plot`** `def coefficient_plot(models: dict[str, pandas.DataFrame], terms: dict[str, str], title: str, subtitle: str, source: str, xlabel: str = 'Elasticity (95% CI)')`
+- **`coefficient_plot`** `def coefficient_plot(models: dict[str, pandas.DataFrame], terms: dict[str, str], title: str, subtitle: str, source: str, xlabel: str = 'Elasticity (95% CI)', ylabel: str = 'Predictor')`
   Estimates with 95% intervals for selected terms, one colour per model.
 - **`confounding_scatter`** `def confounding_scatter(raw: pandas.DataFrame, x: str, y: str, group: str, group_order: list[str], partial: pandas.DataFrame, raw_title: str, partial_title: str, title: str, subtitle: str, source: str, xlabel: str, ylabel: str)`
   Two panels: the raw log-log relationship coloured by a size group, then the same relationship after removing size (residuals).
 - **`correlation_heatmap`** `def correlation_heatmap(matrix: pandas.DataFrame, labels: list[str], title: str, subtitle: str, source: str)`
   Correlation matrix (lower triangle) on a blue (positive) / gray (zero) / red scale.
-- **`group_strip`** `def group_strip(df: pandas.DataFrame, value: str, group: str, order: list[str], ylabel: str, title: str, subtitle: str, source: str, tick_labels: list[str] | None = None)`
+- **`group_strip`** `def group_strip(df: pandas.DataFrame, value: str, group: str, order: list[str], ylabel: str, title: str, subtitle: str, source: str, tick_labels: list[str] | None = None, xlabel: str = '')`
   Every observation per group on a log scale, with the median marked.
-- **`line_trend`** `def line_trend(df: pandas.DataFrame, x: str, series: list[str], labels: list[str], ylabel: str, title: str, subtitle: str, source: str)`
+- **`line_trend`** `def line_trend(df: pandas.DataFrame, x: str, series: list[str], labels: list[str], ylabel: str, title: str, subtitle: str, source: str, xlabel: str = 'Year')`
   Up to three lines on one axis, each labelled at its end and in the legend.
 - **`log_histogram`** `def log_histogram(values: pandas.Series, xlabel: str, title: str, subtitle: str, source: str, bins: int = 20)`
   Histogram with log-spaced bins, for right-skewed positive values.
-- **`market_share_bars`** `def market_share_bars(shares: pandas.DataFrame, title: str, subtitle: str, source: str)`
+- **`market_share_bars`** `def market_share_bars(shares: pandas.DataFrame, title: str, subtitle: str, source: str, ylabel: str = 'Buying country')`
   Horizontal bars of each country's share (output of exploratory.market_shares).
 - **`pair_plot`** `def pair_plot(df: pandas.DataFrame, columns: list[str], labels: list[str], hue: str, hue_order: list[str], title: str, subtitle: str, source: str)`
   Seaborn pair plot of log10 values: every pairwise relationship at once, coloured by group.
 - **`save`** `def save(fig, name: str, folder: pathlib.Path = WindowsPath('C:/Users/mcobp/business-analytics-portfolio/docs/figures')) -> pathlib.Path`
-  Save a figure as PNG (150 dpi) in docs/figures/ or another folder; returns the path.
+  Save a figure as 300 dpi PNG and vector SVG in docs/figures/ (or `folder`).
 
 ## `src.data_pipeline`
 
