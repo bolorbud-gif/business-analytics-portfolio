@@ -155,3 +155,35 @@ and the trade value in USD from `data1.xlsx`.
 Table rules: each `data1.xlsx` row appears **at most once**. The merge checks for many-to-one
 and fails the run if rows are lost or duplicated. The only rows left out are China's trade with
 itself (4 rows in the real data), which `country_wind_imports` excludes; the quality report lists them.
+
+## `trade_wind_wide` (derived analysis table, "one sheet" view)
+
+**Grain:** one country in one year, with both trade directions **side by side** instead of on separate rows.
+**Primary key:** (`partner`, `year`).
+**Foreign key:** (`partner`, `year`) → `country_wind_imports`.
+**Source:** built by `build_trade_wind_wide()` in [`transform.py`](../src/data_pipeline/transform.py),
+which pivots `trade_wind_merged` on `trade_flow`. Also exported as `data/processed/trade_wind_wide.csv`
+and as a one-sheet Excel file, `data/processed/trade_wind_wide.xlsx` (sheet `trade_wind`). Neither is committed.
+
+Direction names are from the **partner country's** point of view:
+
+| Field | Type | Key | Source | Description | Business rule |
+|---|---|---|---|---|---|
+| partner | VARCHAR | PK, FK | `trade_wind_merged.partner` | Country, World Bank naming | **Validated:** not `China` |
+| country | VARCHAR | | `trade_wind_merged.country` | Same country, Ember naming | |
+| year | INTEGER | PK, FK | `trade_wind_merged.year` | Calendar year | **Validated:** 2000–2030 |
+| imports_from_china_kg | FLOAT | | `quantity` where `trade_flow = 'Export'` | Rare-earth compounds the country bought from China, kg | NULL if no Export row that year. **Validated:** ≥ 0 |
+| imports_from_china_value_kusd | FLOAT | | `trade_value_kusd` where `trade_flow = 'Export'` | Value of those imports, thousand USD | NULL if no Export row. **Validated:** ≥ 0 |
+| exports_to_china_kg | FLOAT | | `quantity` where `trade_flow = 'Import'` | Rare-earth compounds China bought from the country, kg | NULL if no Import row. **Validated:** ≥ 0 |
+| exports_to_china_value_kusd | FLOAT | | `trade_value_kusd` where `trade_flow = 'Import'` | Value of those exports, thousand USD | NULL if no Import row. **Validated:** ≥ 0 |
+| import_growth_pct | FLOAT | | `trade_wind_merged` | Growth of imports from China: (this year − previous year) ÷ previous year × 100 | As in `country_wind_imports` |
+| wind_generation_twh | FLOAT | | `trade_wind_merged` | Wind generation, TWh | |
+| wind_generation_change_twh | FLOAT | | `trade_wind_merged` | Change from previous year, TWh | |
+| wind_capacity_gw | FLOAT | | `trade_wind_merged` | Installed wind capacity, GW | |
+
+Table rules: **Validated** every row has at least one direction filled. The row count must equal
+the number of distinct country-years in `trade_wind_merged`; if not, the run stops.
+
+**Data limitation (real data):** no country-year in `data1.xlsx` has both directions (Import rows
+are 2020–2022 and 2025, Export rows 2023–2024), so each row currently has only one side filled.
+The synthetic sample has both directions per year and shows the side-by-side layout working.

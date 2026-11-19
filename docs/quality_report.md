@@ -2,7 +2,7 @@
 
 Generated automatically by `scripts/run_pipeline.py`. Do not edit by hand.
 
-- **Run started:** 2026-11-18T22:18:38
+- **Run started:** 2026-11-18T22:49:07
 - **Status:** SUCCESS
 - **Raw data:** `data/raw`
 - **Database:** `sqlite:///data/processed/rare_earth.db`
@@ -16,6 +16,7 @@ Generated automatically by `scripts/run_pipeline.py`. Do not edit by hand.
 | `partner_trade_energy` | derived | 227 | 0 | 0 | 0 | 227 |
 | `country_wind_imports` | derived | 432 | 0 | 0 | 0 | 432 |
 | `trade_wind_merged` | derived | 223 | 0 | 0 | 0 | 223 |
+| `trade_wind_wide` | derived | 223 | 0 | 0 | 0 | 223 |
 
 ## Action taken on bad records
 
@@ -83,6 +84,19 @@ No missing values.
 | wind_generation_change_twh | 20 | 8.97% |
 | wind_capacity_gw | 22 | 9.87% |
 
+**`trade_wind_wide`** (223 rows)
+
+| Column | Missing | % |
+|---|---:|---:|
+| imports_from_china_kg | 103 | 46.19% |
+| imports_from_china_value_kusd | 103 | 46.19% |
+| exports_to_china_kg | 120 | 53.81% |
+| exports_to_china_value_kusd | 120 | 53.81% |
+| import_growth_pct | 171 | 76.68% |
+| wind_generation_twh | 20 | 8.97% |
+| wind_generation_change_twh | 20 | 8.97% |
+| wind_capacity_gw | 22 | 9.87% |
+
 ## Re-runnability check
 
 Each run replaces table contents in one transaction. Row counts and a content
@@ -96,9 +110,11 @@ input, both must be identical.
 | `partner_trade_energy` | 227 | 227 | `9be0998409ca` | `9be0998409ca` | Unchanged (no duplicates) |
 | `country_wind_imports` | 432 | 432 | `e11e49327bc3` | `e11e49327bc3` | Unchanged (no duplicates) |
 | `trade_wind_merged` | 223 | 223 | `3d6e7d13383d` | `3d6e7d13383d` | Unchanged (no duplicates) |
+| `trade_wind_wide` | 223 | 223 | `30c506681d47` | `30c506681d47` | Unchanged (no duplicates) |
 
 ## Notes
 
 - 15 partner_trade_energy row(s) have NULL electricity fields: no electricity data for 8 partner(s) in those years: Korea, Dem. Rep., Lao PDR, Mozambique, Myanmar, Other Asia, nes, Peru, Ukraine, Venezuela.
 - country_wind_imports: imports from China recorded for 120 of 432 country-years (years [2023, 2024]); import growth computed for 52. Other years have no Export rows in data1.xlsx, so they are NULL, not zero.
 - trade_wind_merged: 4 data1.xlsx row(s) not matched to country_wind_imports and left out (partner China: China trading with itself is re-imports).
+- trade_wind_wide: 0 country-year(s) have both directions, 120 only imports from China, 103 only exports to China.

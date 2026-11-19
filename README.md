@@ -67,6 +67,7 @@ and a re-runnability check.
 | `partner_trade_energy` | One trade row plus the partner's power mix that year |
 | `country_wind_imports` | One country in one year: rare-earth imports from China (kg), import growth %, wind generation, wind generation change and wind capacity. Also saved as `data/processed/country_wind_imports.csv` |
 | `trade_wind_merged` | One `data1.xlsx` row (Import or Export) matched to `country_wind_imports` on country + year. Also saved as `data/processed/trade_wind_merged.csv` |
+| `trade_wind_wide` | `trade_wind_merged` with Export and Import side by side: one row per country and year. Also saved as `data/processed/trade_wind_wide.csv` and `trade_wind_wide.xlsx` (one sheet) |
 
 ### How it works
 

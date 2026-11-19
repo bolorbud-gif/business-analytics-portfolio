@@ -251,3 +251,46 @@ def build_trade_wind_merged(
     logger.info("Built trade_wind_merged: %s rows (%s data1 rows left out)",
                 len(out), len(dropped))
     return out[columns]
+
+
+def build_trade_wind_wide(merged: pd.DataFrame, report: QualityReport | None = None) -> pd.DataFrame:
+    """trade_wind_merged reshaped to one row per country and year, with China's Export
+    and Import side by side instead of on separate rows.
+
+    Seen from the partner country:
+      imports_from_china_*  = China's Export rows (the country buys from China)
+      exports_to_china_*    = China's Import rows (China buys from the country)
+    A direction with no data1 row that year is NULL, not zero.
+    """
+    keys = ["partner", "year"]
+    flows = merged.pivot_table(index=keys, columns="trade_flow",
+                               values=["quantity", "trade_value_kusd"], aggfunc="sum")
+    flows = flows.reindex(columns=pd.MultiIndex.from_product(
+        [["quantity", "trade_value_kusd"], ["Export", "Import"]]))
+    flows.columns = ["imports_from_china_kg", "exports_to_china_kg",
+                     "imports_from_china_value_kusd", "exports_to_china_value_kusd"]
+    wind = merged.groupby(keys)[[
+        "country", "import_growth_pct", "wind_generation_twh",
+        "wind_generation_change_twh", "wind_capacity_gw",
+    ]].first()
+    out = flows.join(wind).reset_index()
+
+    if report:
+        report.table("trade_wind_wide", "derived").rows_in = len(out)
+        has_exp = out["imports_from_china_kg"].notna()
+        has_imp = out["exports_to_china_kg"].notna()
+        report.notes.append(
+            f"trade_wind_wide: {int((has_exp & has_imp).sum())} country-year(s) have both "
+            f"directions, {int((has_exp & ~has_imp).sum())} only imports from China, "
+            f"{int((~has_exp & has_imp).sum())} only exports to China."
+        )
+
+    columns = [
+        "partner", "country", "year",
+        "imports_from_china_kg", "imports_from_china_value_kusd",
+        "exports_to_china_kg", "exports_to_china_value_kusd",
+        "import_growth_pct", "wind_generation_twh", "wind_generation_change_twh",
+        "wind_capacity_gw",
+    ]
+    logger.info("Built trade_wind_wide: %s rows", len(out))
+    return out[columns]

@@ -114,6 +114,25 @@ trade_wind_merged = Table(
     ),
 )
 
+trade_wind_wide = Table(
+    "trade_wind_wide", metadata,
+    Column("partner", String, primary_key=True),
+    Column("country", String, nullable=False),
+    Column("year", Integer, primary_key=True),
+    Column("imports_from_china_kg", Float),
+    Column("imports_from_china_value_kusd", Float),
+    Column("exports_to_china_kg", Float),
+    Column("exports_to_china_value_kusd", Float),
+    Column("import_growth_pct", Float),
+    Column("wind_generation_twh", Float),
+    Column("wind_generation_change_twh", Float),
+    Column("wind_capacity_gw", Float),
+    ForeignKeyConstraint(
+        ["partner", "year"],
+        ["country_wind_imports.partner", "country_wind_imports.year"],
+    ),
+)
+
 
 def get_engine(url: str, echo: bool = False) -> Engine:
     """Create a SQLAlchemy engine. For SQLite, make sure the folder exists."""

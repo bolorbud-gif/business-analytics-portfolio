@@ -14,13 +14,14 @@ from src.data_pipeline.load import create_schema, get_engine, load
 from src.data_pipeline.quality import QualityReport
 from src.data_pipeline.transform import (
     build_country_wind_imports, build_partner_trade_energy, build_trade_wind_merged,
-    transform_electricity, transform_trade,
+    build_trade_wind_wide, transform_electricity, transform_trade,
 )
 from src.data_pipeline.validate import validate_table
 
 logger = logging.getLogger(__name__)
 
-EXPORT_TABLES = ["country_wind_imports", "trade_wind_merged"]
+EXPORT_TABLES = ["country_wind_imports", "trade_wind_merged", "trade_wind_wide"]
+EXCEL_TABLES = {"trade_wind_wide": "trade_wind"}  # table -> sheet name, also saved as .xlsx
 
 
 def run_pipeline(
@@ -38,7 +39,8 @@ def run_pipeline(
 
     Always writes the quality report (if report_path is given), also when a stage
     fails, so the reason is recorded. Raises PipelineError on failure. If export_dir
-    is given, the analysis tables in EXPORT_TABLES are also saved there as CSV.
+    is given, the analysis tables in EXPORT_TABLES are also saved there as CSV, and
+    those in EXCEL_TABLES as a one-sheet Excel file.
     """
     report = QualityReport(raw_dir=str(raw_dir), database=database_url)
     checks = {"rejected_dir": Path(rejected_dir), "max_rejected_pct": max_rejected_pct}
@@ -63,6 +65,11 @@ def run_pipeline(
         merged = validate_table("trade_wind_merged",
                                 build_trade_wind_merged(trade, wind_imports, report),
                                 report, **checks)
+        wide = validate_table("trade_wind_wide", build_trade_wind_wide(merged, report),
+                              report, **checks)
+        if len(wide) != len(merged[["partner", "year"]].drop_duplicates()):
+            raise PipelineError("trade_wind_wide row count differs from country-years in "
+                                "trade_wind_merged")
 
         logger.info("--- Stage: load")
         engine = get_engine(database_url, echo)
@@ -70,13 +77,19 @@ def run_pipeline(
         load(engine, {"trade_flows": trade, "electricity_generation": electricity,
                       "partner_trade_energy": combined,
                       "country_wind_imports": wind_imports,
-                      "trade_wind_merged": merged}, report)
+                      "trade_wind_merged": merged,
+                      "trade_wind_wide": wide}, report)
         if export_dir:
-            tables = {"country_wind_imports": wind_imports, "trade_wind_merged": merged}
+            tables = {"country_wind_imports": wind_imports, "trade_wind_merged": merged,
+                      "trade_wind_wide": wide}
             Path(export_dir).mkdir(parents=True, exist_ok=True)
             for name in EXPORT_TABLES:
                 tables[name].to_csv(Path(export_dir) / f"{name}.csv", index=False)
-            logger.info("Exported %s to %s as CSV", ", ".join(EXPORT_TABLES), export_dir)
+            for name, sheet in EXCEL_TABLES.items():
+                tables[name].to_excel(Path(export_dir) / f"{name}.xlsx", sheet_name=sheet,
+                                      index=False)
+            logger.info("Exported %s to %s (CSV; %s also as Excel)", ", ".join(EXPORT_TABLES),
+                        export_dir, ", ".join(EXCEL_TABLES))
         report.status = "SUCCESS"
         return report
     except Exception as exc:

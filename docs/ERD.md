@@ -13,6 +13,8 @@ erDiagram
     electricity_generation |o..o| country_wind_imports : "Wind row by country + year"
     trade_flows ||--o| trade_wind_merged : "data1 row (FK)"
     country_wind_imports ||--o{ trade_wind_merged : "matched on country + year (FK)"
+    trade_wind_merged }|..|| trade_wind_wide : "pivoted: Export + Import on one row"
+    country_wind_imports ||--o| trade_wind_wide : "country + year (FK)"
 
     trade_flows {
         string reporter PK "always China"
@@ -90,6 +92,20 @@ erDiagram
         float wind_generation_change_twh
         float wind_capacity_gw
     }
+
+    trade_wind_wide {
+        string partner PK, FK
+        int year PK, FK
+        string country
+        float imports_from_china_kg "China Export rows"
+        float imports_from_china_value_kusd
+        float exports_to_china_kg "China Import rows"
+        float exports_to_china_value_kusd
+        float import_growth_pct
+        float wind_generation_twh
+        float wind_generation_change_twh
+        float wind_capacity_gw
+    }
 ```
 
 ## Relationships
@@ -102,6 +118,8 @@ erDiagram
 | `country_wind_imports` | `electricity_generation` | One country-year matches 0 or 1 `Wind` row (`country` + `year` + `source = 'Wind'`) | No: logical link | Countries with no wind data keep NULL wind fields |
 | `trade_wind_merged` | `trade_flows` | Each `trade_flows` row appears at most once | **Yes**: composite FK on the 5 key columns | Only China's trade with itself is left out |
 | `trade_wind_merged` | `country_wind_imports` | Many merged rows per country-year (one per trade flow) | **Yes**: FK on (`partner`, `year`) | This is the "match country and year" join |
+| `trade_wind_wide` | `trade_wind_merged` | One wide row per country-year, made from its 1–2 merged rows | No: derived by pivot | Row count must equal distinct country-years in `trade_wind_merged` |
+| `trade_wind_wide` | `country_wind_imports` | Each wide row matches one country-year | **Yes**: FK on (`partner`, `year`) | |
 
 ## Grain (what one row means)
 
@@ -112,3 +130,4 @@ erDiagram
 | `partner_trade_energy` | One `trade_flows` row plus that partner's power mix in the same year | Derived analysis table |
 | `country_wind_imports` | One country in one year: rare-earth imports from China, their growth, and wind power | Derived analysis table (panel) |
 | `trade_wind_merged` | One `data1.xlsx` row plus that country's `country_wind_imports` values for the same year | Derived analysis table |
+| `trade_wind_wide` | One country in one year with imports from China and exports to China side by side, plus wind | Derived analysis table (one sheet) |

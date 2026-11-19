@@ -14,7 +14,7 @@ from src.data_pipeline.pipeline import run_pipeline
 from src.data_pipeline.quality import QualityReport
 from src.data_pipeline.transform import (
     build_country_wind_imports, build_partner_trade_energy, build_trade_wind_merged,
-    transform_electricity, transform_trade,
+    build_trade_wind_wide, transform_electricity, transform_trade,
 )
 from src.data_pipeline.validate import validate_table
 
@@ -141,6 +141,22 @@ def test_trade_wind_merged_keeps_every_data1_row_except_china(electricity):
     assert any("left out" in n for n in report.notes)
 
 
+def test_trade_wind_wide_puts_export_and_import_on_one_row(electricity):
+    trade = clean_trade([
+        ("Export", 2023, "Japan", 200.0), ("Import", 2023, "Japan", 30.0),  # both directions
+        ("Import", 2023, "France", 10.0),                                    # one direction
+    ])
+    trade.loc[trade["trade_flow"] == "Import", "trade_value_kusd"] = 7.0
+    merged = build_trade_wind_merged(trade, build_country_wind_imports(trade, electricity))
+    wide = build_trade_wind_wide(merged).set_index(["partner", "year"])
+    assert len(wide) == 2  # one row per country-year
+    japan = wide.loc[("Japan", 2023)]
+    assert (japan["imports_from_china_kg"], japan["exports_to_china_kg"]) == (200.0, 30.0)
+    assert japan["exports_to_china_value_kusd"] == 7.0
+    france = wide.loc[("France", 2023)]
+    assert pd.isna(france["imports_from_china_kg"]) and france["exports_to_china_kg"] == 10.0
+
+
 # --- Validate: bad records are rejected, not loaded --------------------------
 
 def test_valid_rows_pass_unchanged(trade, electricity):
@@ -219,6 +235,8 @@ def test_sample_pipeline_quality_counts(tmp_path):
     assert t["electricity_generation"].rows_rejected == 1
     assert t["country_wind_imports"].rows_after_load == 8 * 3  # 8 partners x 3 years
     assert t["trade_wind_merged"].rows_after_load == t["trade_flows"].rows_after_load
+    # all 24 country-years stay; the 2 rejected rows only blank one direction each
+    assert t["trade_wind_wide"].rows_after_load == 8 * 3
     assert "## Re-runnability check" in (tmp_path / "report.md").read_text(encoding="utf-8")
 
 

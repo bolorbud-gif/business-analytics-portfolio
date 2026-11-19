@@ -139,12 +139,40 @@ trade_wind_merged_schema = pa.DataFrameSchema(
     name="trade_wind_merged",
 )
 
+trade_wind_wide_schema = pa.DataFrameSchema(
+    {
+        "partner": pa.Column(str, pa.Check.ne("China")),
+        "country": pa.Column(str),
+        "year": pa.Column(int, YEAR_RANGE),
+        "imports_from_china_kg": pa.Column(float, NON_NEGATIVE, nullable=True),
+        "imports_from_china_value_kusd": pa.Column(float, NON_NEGATIVE, nullable=True),
+        "exports_to_china_kg": pa.Column(float, NON_NEGATIVE, nullable=True),
+        "exports_to_china_value_kusd": pa.Column(float, NON_NEGATIVE, nullable=True),
+        "import_growth_pct": pa.Column(float, pa.Check.ge(-100), nullable=True),
+        "wind_generation_twh": pa.Column(float, NON_NEGATIVE, nullable=True),
+        "wind_generation_change_twh": pa.Column(float, nullable=True),
+        "wind_capacity_gw": pa.Column(float, NON_NEGATIVE, nullable=True),
+    },
+    checks=[
+        pa.Check(
+            lambda df: df["imports_from_china_kg"].notna() | df["exports_to_china_kg"].notna(),
+            element_wise=False,
+            error="each row needs at least one trade direction",
+        ),
+    ],
+    unique=["partner", "year"],
+    strict=True,
+    coerce=True,
+    name="trade_wind_wide",
+)
+
 SCHEMAS = {
     "trade_flows": trade_schema,
     "electricity_generation": electricity_schema,
     "partner_trade_energy": partner_trade_energy_schema,
     "country_wind_imports": country_wind_imports_schema,
     "trade_wind_merged": trade_wind_merged_schema,
+    "trade_wind_wide": trade_wind_wide_schema,
 }
 
 
