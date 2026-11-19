@@ -78,7 +78,7 @@ def main() -> int:
             max_rejected_pct=settings["max_rejected_pct"],
             rebuild=args.rebuild,
             echo=db.get("echo", False),
-            export_csv=settings.get("export_csv"),
+            export_dir=settings.get("export_dir"),
         )
     except PipelineError as exc:
         logger.error("Pipeline FAILED: %s", exc)

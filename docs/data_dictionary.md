@@ -121,3 +121,37 @@ A year with no trade record is NULL, not 0.
 The other years hold China's imports instead. So `imports_from_china_kg` is filled for 2023–2024
 only, and `import_growth_pct` for 2024 only (52 countries). Re-downloading `data1.xlsx` with
 exports for every year fills the table automatically on the next run.
+
+## `trade_wind_merged` (derived analysis table)
+
+**Grain:** one `data1.xlsx` row (one `trade_flows` row) with the matching country-year from `country_wind_imports`.
+**Primary key:** (`reporter`, `trade_flow`, `product_code`, `year`, `partner`).
+**Foreign keys:** those five columns → `trade_flows`; (`partner`, `year`) → `country_wind_imports`.
+**Source:** built by `build_trade_wind_merged()` in [`transform.py`](../src/data_pipeline/transform.py).
+It joins validated `trade_flows` (the cleaned `data1.xlsx`) to `country_wind_imports` on
+**country (`partner`) + year**, an inner join. Also exported to `data/processed/trade_wind_merged.csv` (not committed).
+
+Unlike `country_wind_imports`, this table keeps **both** trade directions (Import and Export rows)
+and the trade value in USD from `data1.xlsx`.
+
+| Field | Type | Key | Source | Description | Business rule |
+|---|---|---|---|---|---|
+| reporter | VARCHAR | PK, FK | `data1.xlsx` first column | Reporting country | **Validated:** `China` |
+| trade_flow | VARCHAR | PK, FK | `data1.xlsx` `TradeFlow` | `Export` = country buys from China; `Import` = China buys from the country | **Validated:** `Export` or `Import` |
+| product_code | VARCHAR(6) | PK, FK | `data1.xlsx` `ProductCode` | HS6 code | **Validated:** 6 digits |
+| product_description | VARCHAR | | `data1.xlsx` `Product Description` | HS product name | Required |
+| year | INTEGER | PK, FK | `data1.xlsx` `Year` | Calendar year (join key) | **Validated:** 2000–2030 |
+| partner | VARCHAR | PK, FK | `data1.xlsx` `Partner` | Country (join key), World Bank naming | **Validated:** not `China` |
+| country | VARCHAR | | `country_wind_imports.country` | Same country, Ember naming | |
+| trade_value_kusd | FLOAT | | `data1.xlsx` `Trade Value 1000USD` | Trade value, thousand USD | **Validated:** ≥ 0 |
+| quantity | FLOAT | | `data1.xlsx` `Quantity` | Quantity traded | **Validated:** ≥ 0 |
+| quantity_unit | VARCHAR | | `data1.xlsx` `Quantity Unit` | Unit | **Validated:** `kg` |
+| imports_from_china_kg | FLOAT | | `country_wind_imports` | Country's imports from China that year, kg | Equals `quantity` on Export rows; NULL on Import rows' years unless an Export exists the same year |
+| import_growth_pct | FLOAT | | `country_wind_imports` | (this year − previous year) ÷ previous year × 100 | Export-to-Export years only; never compares an Import year with an Export year |
+| wind_generation_twh | FLOAT | | `country_wind_imports` | Wind generation, TWh | NULL if no electricity data |
+| wind_generation_change_twh | FLOAT | | `country_wind_imports` | Change from previous year, TWh | NULL if no electricity data |
+| wind_capacity_gw | FLOAT | | `country_wind_imports` | Installed wind capacity, GW | NULL if not reported |
+
+Table rules: each `data1.xlsx` row appears **at most once**. The merge checks for many-to-one
+and fails the run if rows are lost or duplicated. The only rows left out are China's trade with
+itself (4 rows in the real data), which `country_wind_imports` excludes; the quality report lists them.

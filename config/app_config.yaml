@@ -7,7 +7,7 @@ pipeline:
   report: docs/quality_report.md
   rejected_dir: data/interim     # rejected rows saved here as rejected_<table>.csv
   max_rejected_pct: 5            # stop the run if more than this % of a table is rejected
-  export_csv: data/processed/country_wind_imports.csv   # also save this table as CSV
+  export_dir: data/processed   # analysis tables also saved here as CSV
 
 # Used with --sample: committed synthetic data, separate database and report
 sample:
@@ -15,7 +15,7 @@ sample:
   database_url: sqlite:///data/processed/rare_earth_sample.db
   report: docs/quality_report_sample.md
   rejected_dir: data/interim/sample
-  export_csv: data/processed/country_wind_imports_sample.csv
+  export_dir: data/processed/sample
 
 logging:
   level: INFO

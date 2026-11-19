@@ -66,6 +66,7 @@ and a re-runnability check.
 | `electricity_generation` | One country's electricity from one source in one year (from `data2.xlsx`) |
 | `partner_trade_energy` | One trade row plus the partner's power mix that year |
 | `country_wind_imports` | One country in one year: rare-earth imports from China (kg), import growth %, wind generation, wind generation change and wind capacity. Also saved as `data/processed/country_wind_imports.csv` |
+| `trade_wind_merged` | One `data1.xlsx` row (Import or Export) matched to `country_wind_imports` on country + year. Also saved as `data/processed/trade_wind_merged.csv` |
 
 ### How it works
 

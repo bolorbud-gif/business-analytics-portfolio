@@ -64,3 +64,24 @@ CREATE TABLE partner_trade_energy (
 	PRIMARY KEY (reporter, trade_flow, product_code, year, partner),
 	FOREIGN KEY(reporter, trade_flow, product_code, year, partner) REFERENCES trade_flows (reporter, trade_flow, product_code, year, partner)
 );
+
+CREATE TABLE trade_wind_merged (
+	reporter VARCHAR NOT NULL,
+	trade_flow VARCHAR NOT NULL,
+	product_code VARCHAR(6) NOT NULL,
+	product_description VARCHAR NOT NULL,
+	year INTEGER NOT NULL,
+	partner VARCHAR NOT NULL,
+	country VARCHAR NOT NULL,
+	trade_value_kusd FLOAT NOT NULL,
+	quantity FLOAT NOT NULL,
+	quantity_unit VARCHAR NOT NULL,
+	imports_from_china_kg FLOAT,
+	import_growth_pct FLOAT,
+	wind_generation_twh FLOAT,
+	wind_generation_change_twh FLOAT,
+	wind_capacity_gw FLOAT,
+	PRIMARY KEY (reporter, trade_flow, product_code, year, partner),
+	FOREIGN KEY(reporter, trade_flow, product_code, year, partner) REFERENCES trade_flows (reporter, trade_flow, product_code, year, partner),
+	FOREIGN KEY(partner, year) REFERENCES country_wind_imports (partner, year)
+);

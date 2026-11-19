@@ -86,6 +86,34 @@ country_wind_imports = Table(
     Column("wind_capacity_gw", Float),
 )
 
+trade_wind_merged = Table(
+    "trade_wind_merged", metadata,
+    Column("reporter", String, primary_key=True),
+    Column("trade_flow", String, primary_key=True),
+    Column("product_code", String(6), primary_key=True),
+    Column("product_description", String, nullable=False),
+    Column("year", Integer, primary_key=True),
+    Column("partner", String, primary_key=True),
+    Column("country", String, nullable=False),
+    Column("trade_value_kusd", Float, nullable=False),
+    Column("quantity", Float, nullable=False),
+    Column("quantity_unit", String, nullable=False),
+    Column("imports_from_china_kg", Float),
+    Column("import_growth_pct", Float),
+    Column("wind_generation_twh", Float),
+    Column("wind_generation_change_twh", Float),
+    Column("wind_capacity_gw", Float),
+    ForeignKeyConstraint(
+        ["reporter", "trade_flow", "product_code", "year", "partner"],
+        ["trade_flows.reporter", "trade_flows.trade_flow", "trade_flows.product_code",
+         "trade_flows.year", "trade_flows.partner"],
+    ),
+    ForeignKeyConstraint(
+        ["partner", "year"],
+        ["country_wind_imports.partner", "country_wind_imports.year"],
+    ),
+)
+
 
 def get_engine(url: str, echo: bool = False) -> Engine:
     """Create a SQLAlchemy engine. For SQLite, make sure the folder exists."""

@@ -115,11 +115,36 @@ country_wind_imports_schema = pa.DataFrameSchema(
     name="country_wind_imports",
 )
 
+trade_wind_merged_schema = pa.DataFrameSchema(
+    {
+        "reporter": pa.Column(str, pa.Check.isin(["China"])),
+        "trade_flow": pa.Column(str, pa.Check.isin(["Export", "Import"])),
+        "product_code": pa.Column(str, pa.Check.str_matches(r"^\d{6}$")),
+        "product_description": pa.Column(str),
+        "year": pa.Column(int, YEAR_RANGE),
+        "partner": pa.Column(str, pa.Check.ne("China")),
+        "country": pa.Column(str),
+        "trade_value_kusd": pa.Column(float, NON_NEGATIVE),
+        "quantity": pa.Column(float, NON_NEGATIVE),
+        "quantity_unit": pa.Column(str, pa.Check.isin(["kg"])),
+        "imports_from_china_kg": pa.Column(float, NON_NEGATIVE, nullable=True),
+        "import_growth_pct": pa.Column(float, pa.Check.ge(-100), nullable=True),
+        "wind_generation_twh": pa.Column(float, NON_NEGATIVE, nullable=True),
+        "wind_generation_change_twh": pa.Column(float, nullable=True),
+        "wind_capacity_gw": pa.Column(float, NON_NEGATIVE, nullable=True),
+    },
+    unique=["reporter", "trade_flow", "product_code", "year", "partner"],
+    strict=True,
+    coerce=True,
+    name="trade_wind_merged",
+)
+
 SCHEMAS = {
     "trade_flows": trade_schema,
     "electricity_generation": electricity_schema,
     "partner_trade_energy": partner_trade_energy_schema,
     "country_wind_imports": country_wind_imports_schema,
+    "trade_wind_merged": trade_wind_merged_schema,
 }
 
 

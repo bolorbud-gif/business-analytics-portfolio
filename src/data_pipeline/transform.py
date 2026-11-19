@@ -213,3 +213,41 @@ def build_country_wind_imports(
     logger.info("Built country_wind_imports: %s rows (%s with imports)",
                 len(out), int(out["imports_from_china_kg"].notna().sum()))
     return out[columns]
+
+
+def build_trade_wind_merged(
+    trade: pd.DataFrame, country_wind: pd.DataFrame, report: QualityReport | None = None
+) -> pd.DataFrame:
+    """Every data1.xlsx row (cleaned trade_flows) matched to country_wind_imports on
+    country (partner) and year.
+
+    Inner join: a row is kept when the country-year exists in both. country_wind_imports
+    covers every partner-year except China, so the only rows left out are China's trade
+    with itself (re-imports). If a country-year has several trade rows (e.g. both
+    Export and Import), each keeps its own row with the same wind values.
+    """
+    out = trade.merge(country_wind, on=["partner", "year"], how="inner",
+                      validate="many_to_one")
+    dropped = trade[~trade.set_index(["partner", "year"]).index.isin(
+        out.set_index(["partner", "year"]).index)]
+    if len(out) + len(dropped) != len(trade):
+        raise PipelineError("trade_wind_merged: rows were lost or duplicated in the merge")
+    if report:
+        report.table("trade_wind_merged", "derived").rows_in = len(out)
+        if len(dropped):
+            partners = sorted(dropped["partner"].unique())
+            report.notes.append(
+                f"trade_wind_merged: {len(dropped)} data1.xlsx row(s) not matched to "
+                f"country_wind_imports and left out (partner {', '.join(partners)}: "
+                f"China trading with itself is re-imports)."
+            )
+
+    columns = [
+        "reporter", "trade_flow", "product_code", "product_description", "year", "partner",
+        "country", "trade_value_kusd", "quantity", "quantity_unit",
+        "imports_from_china_kg", "import_growth_pct",
+        "wind_generation_twh", "wind_generation_change_twh", "wind_capacity_gw",
+    ]
+    logger.info("Built trade_wind_merged: %s rows (%s data1 rows left out)",
+                len(out), len(dropped))
+    return out[columns]

@@ -13,12 +13,14 @@ from src.data_pipeline.extract import extract
 from src.data_pipeline.load import create_schema, get_engine, load
 from src.data_pipeline.quality import QualityReport
 from src.data_pipeline.transform import (
-    build_country_wind_imports, build_partner_trade_energy, transform_electricity,
-    transform_trade,
+    build_country_wind_imports, build_partner_trade_energy, build_trade_wind_merged,
+    transform_electricity, transform_trade,
 )
 from src.data_pipeline.validate import validate_table
 
 logger = logging.getLogger(__name__)
+
+EXPORT_TABLES = ["country_wind_imports", "trade_wind_merged"]
 
 
 def run_pipeline(
@@ -30,13 +32,13 @@ def run_pipeline(
     max_rejected_pct: float = 5.0,
     rebuild: bool = False,
     echo: bool = False,
-    export_csv=None,
+    export_dir=None,
 ) -> QualityReport:
     """Extract -> transform -> validate -> load. Builds the database or refreshes it.
 
     Always writes the quality report (if report_path is given), also when a stage
-    fails, so the reason is recorded. Raises PipelineError on failure. If export_csv
-    is given, the country_wind_imports table is also saved there as CSV.
+    fails, so the reason is recorded. Raises PipelineError on failure. If export_dir
+    is given, the analysis tables in EXPORT_TABLES are also saved there as CSV.
     """
     report = QualityReport(raw_dir=str(raw_dir), database=database_url)
     checks = {"rejected_dir": Path(rejected_dir), "max_rejected_pct": max_rejected_pct}
@@ -58,17 +60,23 @@ def run_pipeline(
         wind_imports = validate_table("country_wind_imports",
                                       build_country_wind_imports(trade, electricity, report),
                                       report, **checks)
+        merged = validate_table("trade_wind_merged",
+                                build_trade_wind_merged(trade, wind_imports, report),
+                                report, **checks)
 
         logger.info("--- Stage: load")
         engine = get_engine(database_url, echo)
         create_schema(engine, rebuild=rebuild)
         load(engine, {"trade_flows": trade, "electricity_generation": electricity,
                       "partner_trade_energy": combined,
-                      "country_wind_imports": wind_imports}, report)
-        if export_csv:
-            Path(export_csv).parent.mkdir(parents=True, exist_ok=True)
-            wind_imports.to_csv(export_csv, index=False)
-            logger.info("country_wind_imports exported to %s", export_csv)
+                      "country_wind_imports": wind_imports,
+                      "trade_wind_merged": merged}, report)
+        if export_dir:
+            tables = {"country_wind_imports": wind_imports, "trade_wind_merged": merged}
+            Path(export_dir).mkdir(parents=True, exist_ok=True)
+            for name in EXPORT_TABLES:
+                tables[name].to_csv(Path(export_dir) / f"{name}.csv", index=False)
+            logger.info("Exported %s to %s as CSV", ", ".join(EXPORT_TABLES), export_dir)
         report.status = "SUCCESS"
         return report
     except Exception as exc:

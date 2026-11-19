@@ -13,8 +13,8 @@ from src.data_pipeline.load import create_schema, get_engine
 from src.data_pipeline.pipeline import run_pipeline
 from src.data_pipeline.quality import QualityReport
 from src.data_pipeline.transform import (
-    build_country_wind_imports, build_partner_trade_energy, transform_electricity,
-    transform_trade,
+    build_country_wind_imports, build_partner_trade_energy, build_trade_wind_merged,
+    transform_electricity, transform_trade,
 )
 from src.data_pipeline.validate import validate_table
 
@@ -122,6 +122,25 @@ def test_country_wind_imports_wind_columns():
             row["wind_capacity_gw"]) == (4.0, 0.5, 2.0)  # Wind only, matched via name map
 
 
+def test_trade_wind_merged_keeps_every_data1_row_except_china(electricity):
+    trade = clean_trade([
+        ("Import", 2022, "Japan", 100.0), ("Export", 2023, "Japan", 200.0),
+        ("Export", 2023, "Korea, Rep.", 80.0), ("Export", 2023, "China", 5.0),
+    ])
+    report = QualityReport("raw", "db")
+    wind = build_country_wind_imports(trade, electricity)
+    merged = build_trade_wind_merged(trade, wind, report).set_index(["partner", "year"])
+    assert len(merged) == 3  # 4 data1 rows - 1 China row
+    assert "China" not in merged.index.get_level_values("partner")
+    assert merged.loc[("Japan", 2022), "trade_flow"] == "Import"  # Import rows kept too
+    assert pd.isna(merged.loc[("Japan", 2022), "imports_from_china_kg"])
+    # 2022 was an Import row (China buying), so there is no 2022 "imports from China"
+    # figure and 2023 growth must stay NULL rather than compare Import with Export.
+    assert merged.loc[("Japan", 2023), "imports_from_china_kg"] == 200.0
+    assert pd.isna(merged.loc[("Japan", 2023), "import_growth_pct"])
+    assert any("left out" in n for n in report.notes)
+
+
 # --- Validate: bad records are rejected, not loaded --------------------------
 
 def test_valid_rows_pass_unchanged(trade, electricity):
@@ -199,6 +218,7 @@ def test_sample_pipeline_quality_counts(tmp_path):
             t["trade_flows"].rows_rejected, t["trade_flows"].rows_after_load) == (49, 1, 2, 46)
     assert t["electricity_generation"].rows_rejected == 1
     assert t["country_wind_imports"].rows_after_load == 8 * 3  # 8 partners x 3 years
+    assert t["trade_wind_merged"].rows_after_load == t["trade_flows"].rows_after_load
     assert "## Re-runnability check" in (tmp_path / "report.md").read_text(encoding="utf-8")
 
 

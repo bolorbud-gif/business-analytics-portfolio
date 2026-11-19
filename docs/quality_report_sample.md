@@ -2,7 +2,7 @@
 
 Generated automatically by `scripts/run_pipeline.py`. Do not edit by hand.
 
-- **Run started:** 2026-11-18T21:54:15
+- **Run started:** 2026-11-18T22:18:46
 - **Status:** SUCCESS
 - **Raw data:** `data/sample`
 - **Database:** `sqlite:///data/processed/rare_earth_sample.db`
@@ -15,6 +15,7 @@ Generated automatically by `scripts/run_pipeline.py`. Do not edit by hand.
 | `electricity_generation` | data2.xlsx | 231 | 0 | 0 | 1 | 230 |
 | `partner_trade_energy` | derived | 46 | 0 | 0 | 0 | 46 |
 | `country_wind_imports` | derived | 24 | 0 | 0 | 0 | 24 |
+| `trade_wind_merged` | derived | 46 | 0 | 0 | 0 | 46 |
 
 ## Action taken on bad records
 
@@ -75,6 +76,16 @@ No missing values.
 | wind_generation_change_twh | 10 | 41.67% |
 | wind_capacity_gw | 3 | 12.50% |
 
+**`trade_wind_merged`** (46 rows)
+
+| Column | Missing | % |
+|---|---:|---:|
+| imports_from_china_kg | 2 | 4.35% |
+| import_growth_pct | 20 | 43.48% |
+| wind_generation_twh | 6 | 13.04% |
+| wind_generation_change_twh | 20 | 43.48% |
+| wind_capacity_gw | 6 | 13.04% |
+
 ## Re-runnability check
 
 Each run replaces table contents in one transaction. Row counts and a content
@@ -87,6 +98,7 @@ input, both must be identical.
 | `electricity_generation` | 230 | 230 | `6b0956041732` | `6b0956041732` | Unchanged (no duplicates) |
 | `partner_trade_energy` | 46 | 46 | `a0f809414c80` | `a0f809414c80` | Unchanged (no duplicates) |
 | `country_wind_imports` | 24 | 24 | `958bc81c691a` | `958bc81c691a` | Unchanged (no duplicates) |
+| `trade_wind_merged` | 46 | 46 | `a270f896a982` | `a270f896a982` | Unchanged (no duplicates) |
 
 ## Notes
 
