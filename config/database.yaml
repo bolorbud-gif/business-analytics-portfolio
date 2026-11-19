@@ -1,0 +1,7 @@
+# Database configuration
+# SQLite needs no server: the database is a single file created on first run.
+# To use PostgreSQL instead, change url to e.g.
+#   postgresql+psycopg://user:password@localhost:5432/rare_earth
+database:
+  url: sqlite:///data/processed/rare_earth.db
+  echo: false   # set to true to log every SQL statement

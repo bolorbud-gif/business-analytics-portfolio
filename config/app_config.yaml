@@ -1,0 +1,11 @@
+# Application settings for the ETL pipeline (scripts/run_pipeline.py)
+pipeline:
+  raw_dir: data/raw
+  sources:
+    trade: data1.xlsx          # China rare-earth trade by partner (HS 284690)
+    electricity: data2.xlsx    # Electricity generation by country and source
+
+logging:
+  level: INFO
+  log_dir: logs
+  log_file: pipeline.log
