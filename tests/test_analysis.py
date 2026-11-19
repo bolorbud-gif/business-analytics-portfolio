@@ -310,7 +310,8 @@ def test_every_analysis_function_has_a_docstring():
                 assert ast.get_docstring(node), f"{path.name}: {node.name}() has no docstring"
 
 
-@pytest.mark.parametrize("notebook", ["01_data_exploration.ipynb", "02_eda_analysis.ipynb"])
+@pytest.mark.parametrize("notebook", ["01_data_exploration.ipynb", "02_eda_analysis.ipynb",
+                                      "03_modeling_experiments.ipynb"])
 def test_notebooks_import_the_package_and_define_no_functions(notebook):
     import json
     import re

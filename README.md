@@ -200,3 +200,50 @@ synthetic sample and say so; charts are saved to `docs/figures/` only from real 
 ```bash
 uv run jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_exploration.ipynb notebooks/02_eda_analysis.ipynb
 ```
+
+## Analytics Engine (Assignment 6)
+
+**Problem type: supervised learning.** A regression (how much a country imports of Chinese rare-earth
+compounds, log10 kg) and a binary classification (is it a **major buyer**, 10 tonnes or more a year?) on
+the same rows. It isn't clustering, because every row has a known outcome. The features are **last year's
+power-sector data**, which are published before this year's trade figures. So the engine can forecast,
+size markets with no trade records, and turn each prediction into an action for a rare-earth supplier's
+market-development team. Walkthrough: [notebooks/03_modeling_experiments.ipynb](notebooks/03_modeling_experiments.ipynb).
+
+```bash
+uv run python -m src.modeling.train                # train, tune, evaluate and save (about 2 minutes)
+uv run python -m src.modeling.predict              # 2024: expected vs actual, with recommended actions
+uv run python -m src.modeling.predict --year 2025  # forecast for a year with no trade data yet
+```
+
+![Every model beats the baseline](docs/figures/12_model_comparison.png)
+
+| Result | Baseline (dummy) | Engine |
+|---|---|---|
+| Regression, cross-validated by country (mean ± SD, 5 folds) | MAE 1.30 ± 0.22 | **Linear regression:** MAE 0.79 ± 0.19 (typically off by 6×), R² 0.41 ± 0.40 |
+| Regression, 14 held-out countries | MAE 1.55 (off by 36×) | MAE 1.02 (off by 10×; 95% CI 0.74–1.31), R² 0.48 |
+| Classification, cross-validated by country | AUC 0.50; cost 0.56 ± 0.03 per country | **Random forest (depth 2):** AUC 0.91 ± 0.07; cost 0.28 ± 0.24 |
+| Classification, 14 held-out countries | Cost 0.56 (flags everyone) | AUC 0.95 (CI 0.82–1.00); all 11 major buyers caught, 4 false alarms; cost 0.16 (CI 0–0.36) |
+
+**Analytics checklist**
+
+| Item | How the engine meets it | Where |
+|---|---|---|
+| Problem type stated explicitly | Supervised regression and binary classification, not clustering; also saved in the model bundle | Notebook intro; `train.PROBLEM_TYPES` |
+| Baseline trained and reported alongside | `DummyRegressor` and `DummyClassifier` are the first row of every table and are scored on the same test set | §2; `evaluate.summarize_cv` |
+| Train/test split done correctly, time-aware if time series | A quarter of the **countries** held out (stratified, used once), plus a train-2023/test-2024 check | §3; `train.split_by_country`, `evaluate.split_comparison` |
+| All preprocessing inside a `Pipeline` | Impute → log10 → scale → model, refitted inside every fold. Measured: scoring on training rows makes the forest look 4× more accurate | §4; `train.build_pipeline`, `evaluate.classic_leak_vs_pipeline` |
+| Every feature checked for availability at prediction time | Last year's power data only (`feature_lag_years: 1`); timing documented per feature and checked on the 2025 forecast rows; trade-derived columns forbidden and screened | §1.1, §4.3; `evaluate.feature_availability`, `evaluate.leakage_screen` |
+| `random_state` set everywhere | One value in the config drives the split, every fold, every model and the bootstrap; a test checks every estimator | `config/model_params.yaml`; `tests/test_modeling.py` |
+| Metric chosen from the business cost of each error | Log-scale MAE (a 2× miss costs the same for any market size). A missed major buyer costs 3 false alarms, and the threshold minimises expected cost; the choice holds for any ratio from 1:1 to 10:1 | §5.1, §6.1, §6.3 |
+| Cross-validation with the standard deviation reported | Nested, by country; every metric with its SD | §5.2, §6.2, figure 12 |
+| Hyperparameters tuned, or a documented reason not to | Grid search inside each training fold; plain linear regression has no hyperparameters (Ridge is its tuned version) | §5.2; `evaluate.nested_cv`, `evaluate.tune` |
+| Full pipeline serialized with provenance | One `joblib` bundle: pipelines, threshold, costs, scores, plus the data's SHA-256, the git commit, the full config, `random_state` and versions. `models/` is git-ignored (fitted on restricted data) | §8; `train.provenance`, `predict.load_engine` |
+| Model output translated into a recommended action | Approach, Grow, Verify, Keep or Low priority for every country, with the reason | §8; `predict.recommend` |
+| Limitations stated honestly | Small data (bootstrap intervals on test scores), one product code, judgement calls, in-sample actions, associations not causes | §10 |
+
+Re-run the notebook after training (without the real database it uses synthetic data and says so):
+
+```bash
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/03_modeling_experiments.ipynb
+```

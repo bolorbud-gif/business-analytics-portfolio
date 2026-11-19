@@ -33,6 +33,14 @@
   I asked which regressions the data supports, whether countries that skip years break log-log
   OLS or ARIMA, and for each hypothesis to be checked with log-log OLS and a descriptive Table 1;
   those answers were added as the regression check and robustness sections.
+- **Assignment 6 (Analytics engine):** Used Claude Code to build `src/modeling/` (training, evaluation
+  and prediction), the modeling notebook, three charts and the engine's tests, following the topics I
+  gave it: baseline rule, dummy regressor, splitting, leakage and pipelines, MAE/RMSE/R²,
+  cross-validation, tuning, saving the model, the engine's structure, and precision, recall, F1, ROC
+  and AUC. The two targets (imports in kg, and major buyers at 10 tonnes a year) build on my
+  Assignment 5 analysis. I then checked it against the course's analytics checklist, which led to
+  last year's power data as features (available at prediction time), a threshold set by the cost of
+  each error, provenance in the saved model, and recommended actions.
 
 ## Where I deliberately did not use it
 
@@ -60,9 +68,19 @@
   reports its business magnitude and effect size before the p-value, with Shapiro-Wilk and Levene
   checks, and every correlation has a scatter plot.
 
+- In Assignment 6, its first saved model couldn't be loaded: run as `python -m`, the custom log step
+  was saved as part of `__main__`. Running the prediction command exposed it; a test now checks it.
+  Its first classifier also used a fixed 0.5 threshold, which made precision and recall swing between
+  folds; the threshold is now chosen on training data.
+- Its first engine used same-year power data, which aren't published until the year is over, so it
+  couldn't forecast; the checklist's feature-availability item caught this. Its first action rules
+  also called India "in line with expectations" while it bought 2% of the expected amount, and told
+  the team to approach every country in 2025, a year with no trade data yet. Both rules were fixed and
+  are now tested.
+
 ## Verification
 
 - I checked Japan's 2024 import growth by hand (63.0%), ran the pipeline twice to confirm
-  nothing changed, and reviewed the quality report. 81 automated tests cover the pipeline
-  and the analysis functions.
+  nothing changed, and reviewed the quality report. 111 automated tests cover the pipeline
+  and the analysis functions, and the analytics engine.
 - I compile all of my work in one folder and save its version history in Google Drive.

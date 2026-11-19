@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 PACKAGES = {
     "src.analysis": ["exploratory", "statistical", "charts"],
+    "src.modeling": ["train", "evaluate", "predict"],
     "src.data_pipeline": ["pipeline", "extract", "transform", "validate", "load", "views", "quality"],
 }
 

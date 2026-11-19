@@ -396,3 +396,117 @@ def coefficient_plot(models: dict[str, pd.DataFrame], terms: dict[str, str], tit
     _source(fig, source)
     fig.tight_layout(rect=(0, 0.04, 1, 0.84))
     return fig
+
+
+# --- Analytics engine (Assignment 6) ----------------------------------------------------------
+
+def cv_comparison(panels: dict, title: str, subtitle: str, source: str, chosen: dict | None = None):
+    """Cross-validated score of each model, mean +- one standard deviation across folds.
+
+    panels: {panel title: (summary table from modeling.evaluate.summarize_cv, metric, x label)},
+    one panel per task, stacked. The first row of each table is the baseline (gray); chosen:
+    {panel title: model name} marks the selected model (orange); other models are blue.
+    """
+    from matplotlib.lines import Line2D
+    apply_style()
+    sizes = [len(t) for t, _, _ in panels.values()]
+    fig, axes = plt.subplots(len(panels), 1, figsize=(8.5, 0.55 * sum(sizes) + 1.6 * len(panels) + 1.2),
+                             gridspec_kw={"height_ratios": sizes})
+    for ax, (panel, (table, metric, xlabel)) in zip(np.atleast_1d(axes), panels.items()):
+        t = table.reset_index(drop=True)
+        k = len(t)
+        for i, row in t.iterrows():
+            y = k - 1 - i
+            color = (MUTED if i == 0 else ORANGE if chosen and chosen.get(panel) == row["model"]
+                     else BLUE)
+            mean, sd = row[metric], row[f"{metric}_sd"]
+            ax.plot([mean - sd, mean + sd], [y, y], color=color, linewidth=2)
+            ax.scatter(mean, y, s=64, color=color, edgecolor=SURFACE, linewidth=1.5, zorder=3)
+            ax.annotate(f"{mean:.2f}", (mean + sd, y), xytext=(6, 0), textcoords="offset points",
+                        va="center", fontsize=9, color=INK_2)
+        ax.set_yticks(range(k), list(t["model"])[::-1])
+        ax.set_ylim(-0.6, k - 0.4)
+        ax.set_title(panel, loc="left", fontsize=10.5, color=INK)
+        ax.set_xlabel(xlabel)
+        ax.grid(axis="y", visible=False)
+        lo, hi = ax.get_xlim()
+        ax.set_xlim(lo, hi + (hi - lo) * 0.08)  # room for the value labels
+    legend = [Line2D([], [], color=c, marker="o", linewidth=2, label=lab)
+              for c, lab in [(MUTED, "Baseline (dummy)"), (BLUE, "Candidate"), (ORANGE, "Chosen")]]
+    inches = fig.get_figheight()  # title block a fixed height in inches, whatever the figure size
+    fig.suptitle(title, x=0.01, y=1 - 0.13 / inches, ha="left", fontsize=13, fontweight="bold", color=INK)
+    fig.text(0.01, 1 - 0.47 / inches, subtitle, ha="left", va="top", fontsize=9.5, color=INK_2)
+    fig.legend(handles=legend, loc="upper left", ncol=3, bbox_to_anchor=(0.005, 1 - 0.72 / inches))
+    _source(fig, source)
+    fig.tight_layout(rect=(0, 0.25 / inches, 1, 1 - 1.15 / inches))
+    fig.subplots_adjust(top=1 - 1.3 / inches)  # tight_layout leaves room for the suptitle twice
+    return fig
+
+
+def predicted_vs_actual(actual, predicted, labels, title: str, subtitle: str, source: str,
+                        note: str | None = None, n_labels: int = 3,
+                        xlabel: str = "Actual imports from China (kg, log scale)",
+                        ylabel: str = "Predicted imports (kg, log scale)"):
+    """Predicted against actual values on log axes, with the perfect-prediction line and
+    dotted lines where a prediction is 10 times too high or too low. The n_labels largest
+    misses are labelled (labels: one name per point)."""
+    apply_style()
+    a, p = np.asarray(actual, dtype=float), np.asarray(predicted, dtype=float)
+    labels = list(labels)
+    fig, ax = plt.subplots(figsize=(7.5, 5.8))
+    lo, hi = min(a.min(), p.min()) / 3, max(a.max(), p.max()) * 3
+    line = np.array([lo, hi])
+    ax.plot(line, line, color=INK_2, linewidth=1.2, label="Perfect prediction")
+    ax.plot(line, line * 10, color=MUTED, linewidth=1, linestyle=":", label="10x too high or too low")
+    ax.plot(line, line / 10, color=MUTED, linewidth=1, linestyle=":")
+    ax.scatter(a, p, s=48, color=BLUE, edgecolor=SURFACE, linewidth=1, zorder=3,
+               label="Test country-year")
+    for i in np.argsort(-np.abs(np.log10(p / a)))[:n_labels]:
+        # Overestimates sit above the line: label them on the left, in the open, unless the
+        # point is so close to the left edge that the label would run into the axis.
+        near_left = np.log10(a[i] / lo) < 0.2 * np.log10(hi / lo)
+        left = p[i] > a[i] and not near_left
+        ax.annotate(labels[i], (a[i], p[i]), xytext=(-7 if left else 7, 3), textcoords="offset points",
+                    ha="right" if left else "left", fontsize=9, color=INK_2)
+    _log_axis(ax, "x")
+    _log_axis(ax, "y")
+    ax.set_xlim(lo, hi)
+    ax.set_ylim(lo, hi)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.legend(loc="upper left")
+    if note:
+        ax.text(0.98, 0.03, note, transform=ax.transAxes, ha="right", va="bottom", fontsize=9.5,
+                color=INK_2)
+    _titles(fig, title, subtitle)
+    _source(fig, source)
+    fig.tight_layout(rect=(0, 0.03, 1, 0.86))
+    return fig
+
+
+def roc_chart(curves: dict, title: str, subtitle: str, source: str, marker: tuple | None = None):
+    """ROC curves (true-positive rate against false-positive rate), each labelled with its
+    AUC, against the diagonal of a model that guesses (AUC 0.5).
+
+    curves: {name: modeling.evaluate.roc_points output}, at most three; marker: optional
+    (false-positive rate, true-positive rate, label) for the threshold in use.
+    """
+    apply_style()
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.plot([0, 1], [0, 1], color=MUTED, linestyle="--", linewidth=1, label="Guessing (AUC 0.50)")
+    for (name, c), color in zip(curves.items(), SERIES):
+        ax.plot(c["fpr"], c["tpr"], color=color, label=f"{name} (AUC {c['AUC']:.2f})")
+    if marker:
+        fpr, tpr, label = marker
+        ax.scatter(fpr, tpr, s=64, color=INK, edgecolor=SURFACE, linewidth=1.5, zorder=4)
+        ax.annotate(label, (fpr, tpr), xytext=(10, -28), textcoords="offset points", fontsize=9,
+                    color=INK_2, bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 1.5})
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_xlabel("False-positive rate (share of smaller buyers flagged)")
+    ax.set_ylabel("True-positive rate (recall: share of major buyers flagged)")
+    ax.legend(loc="lower right")
+    _titles(fig, title, subtitle)
+    _source(fig, source)
+    fig.tight_layout(rect=(0, 0.03, 1, 0.86))
+    return fig
