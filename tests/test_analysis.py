@@ -259,3 +259,69 @@ def test_api_reference_lists_every_public_function():
             module = importlib.import_module(f"{package}.{mod}")
             for name, _ in builder.public_members(module):
                 assert f"**`{name}`**" in doc, f"{package}.{mod}.{name} missing: run build_api_reference.py"
+
+
+# --- Functions moved out of the notebooks -----------------------------------------------------
+
+def test_table_row_counts_and_missing_by_year(sample_db):
+    counts = ex.table_row_counts(sample_db)
+    assert list(counts.index) == ex.TABLES and (counts > 0).all()
+    df = pd.DataFrame({"year": [1, 1, 2, 2], "a": [1.0, None, None, None]})
+    assert ex.missing_by_year(df, ["a"])["a"].tolist() == [50.0, 100.0]
+
+
+def test_wind_trend_focus_and_fallback():
+    wind = pd.DataFrame({
+        "country": ["China", "China", "A", "A", "B", "B", "C"],
+        "year": [2020, 2021, 2020, 2021, 2020, 2021, 2021],  # C lacks 2020: excluded
+        "wind_capacity_gw": [5.0, 30.0, 10.0, 12.0, 1.0, 2.0, 99.0],
+    })
+    trend, info = ex.wind_trend(wind)
+    assert trend.set_index("year").loc[2021].to_dict() == {"China": 30.0, "Other": 14.0}
+    assert info["focus_ahead"] is True and info["labels"] == ["China", "Other 2 countries"]
+    trend, info = ex.wind_trend(wind[wind["country"] != "China"])
+    assert info["series"] == ["All"] and info["focus_ahead"] is None
+
+
+def test_size_adjusted_residuals_match_partial_correlation():
+    df = confounded()
+    resid = st.size_adjusted_residuals(df, "x", "y", ["z"])
+    r = np.corrcoef(resid["x_resid"], resid["y_resid"])[0, 1]
+    assert r == pytest.approx(st.partial_correlation(df, "x", "y", ["z"])["r"])
+
+
+def test_show_saves_only_when_asked(tmp_path):
+    fig = ch.change_bars(pd.Series({"a": 1.0}), "t", "s", "src")
+    assert ch.show(fig, "kept", folder=tmp_path).exists()
+    fig = ch.change_bars(pd.Series({"a": 1.0}), "t", "s", "src")
+    assert ch.show(fig, "skipped", save_figure=False, folder=tmp_path) is None
+    assert not (tmp_path / "skipped.png").exists()
+
+
+# --- Architecture rules --------------------------------------------------------------------
+
+def test_every_analysis_function_has_a_docstring():
+    import ast
+    for path in sorted((ROOT / "src" / "analysis").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        assert ast.get_docstring(tree), f"{path.name}: module docstring missing"
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                assert ast.get_docstring(node), f"{path.name}: {node.name}() has no docstring"
+
+
+@pytest.mark.parametrize("notebook", ["01_data_exploration.ipynb", "02_eda_analysis.ipynb"])
+def test_notebooks_import_the_package_and_define_no_functions(notebook):
+    import json
+    import re
+    nb = json.loads((ROOT / "notebooks" / notebook).read_text(encoding="utf-8"))
+    code = "\n".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code")
+    assert "from src.analysis import" in code
+    assert not re.search(r"^\s*(def|class) ", code, re.M), "logic belongs in src/analysis"
+
+
+def test_buyer_volumes_sums_one_year_and_direction():
+    trade = pd.DataFrame({"trade_flow": ["Export", "Export", "Import", "Export"],
+                          "year": [2024, 2024, 2024, 2023], "partner": ["A", "A", "A", "B"],
+                          "quantity_kg": [1.0, 2.0, 50.0, 7.0]})
+    assert ex.buyer_volumes(trade, 2024).to_dict() == {"A": 3.0}

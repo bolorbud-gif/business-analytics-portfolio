@@ -13,6 +13,8 @@ Exploratory analysis: open the Assignment 4 database, check its quality, describ
 
 - **`analysis_sample`** `def analysis_sample(panel: pandas.DataFrame) -> pandas.DataFrame`
   Country-years usable for the multivariate analysis: imports, wind capacity and total generation all recorded and positive (so logs exist). Adds a size tercile.
+- **`buyer_volumes`** `def buyer_volumes(trade: pandas.DataFrame, year: int, trade_flow: str = 'Export') -> pandas.Series`
+  Total kg per partner for one year and direction (Export = what each country bought).
 - **`check_database`** `def check_database(con) -> pandas.DataFrame`
   Run data-quality checks on the database. One row per check: check, passed, detail.
 - **`concentration`** `def concentration(values: pandas.Series) -> dict`
@@ -29,10 +31,16 @@ Exploratory analysis: open the Assignment 4 database, check its quality, describ
   Wind generation and capacity per country and year.
 - **`market_shares`** `def market_shares(df: pandas.DataFrame, by: str, value: str, top: int = 10) -> pandas.DataFrame`
   Each group's share of the total, largest first; groups after `top` folded into one row.
+- **`missing_by_year`** `def missing_by_year(df: pandas.DataFrame, columns: list[str], year: str = 'year') -> pandas.DataFrame`
+  Percentage of missing values in each column, per year.
 - **`open_database`** `def open_database(path=None)`
   Open the database with foreign keys ON. Returns (connection, path).
 - **`period_change`** `def period_change(yearly: pandas.DataFrame, trade_flow: str, start: int, end: int) -> pandas.Series`
   Percent change in quantity, value and unit value between two years for one direction.
+- **`table_row_counts`** `def table_row_counts(con) -> pandas.Series`
+  Number of rows in each stored table.
+- **`wind_trend`** `def wind_trend(wind: pandas.DataFrame, focus: str = 'China') -> tuple[pandas.DataFrame, dict]`
+  Total wind capacity per year: the `focus` country vs all other countries combined.
 - **`yearly_trade`** `def yearly_trade(trade: pandas.DataFrame) -> pandas.DataFrame`
   Totals per year and direction, with the average unit value (total value / total kg).
 
@@ -68,6 +76,8 @@ Statistical analysis: correlation, partial correlation, regression and growth su
   Assumption checks for an OLS result: unequal variance, residual normality, collinearity.
 - **`residualize`** `def residualize(df: pandas.DataFrame, column: str, controls: list[str]) -> pandas.Series`
   What is left of `column` after a linear fit on the controls (with intercept).
+- **`size_adjusted_residuals`** `def size_adjusted_residuals(df: pandas.DataFrame, x: str, y: str, controls: list[str], log: bool = True) -> pandas.DataFrame`
+  Residuals of x and y after removing the controls (log10 first if log=True).
 - **`strength`** `def strength(r: float) -> str`
   Plain-language size of a correlation coefficient.
 - **`tidy_coefficients`** `def tidy_coefficients(result) -> pandas.DataFrame`
@@ -101,6 +111,8 @@ Charts for the exploratory analysis (Matplotlib + Seaborn).
   Seaborn pair plot of log10 values: every pairwise relationship at once, coloured by group.
 - **`save`** `def save(fig, name: str, folder: pathlib.Path = WindowsPath('C:/Users/mcobp/business-analytics-portfolio/docs/figures')) -> pathlib.Path`
   Save a figure as 300 dpi PNG and vector SVG in docs/figures/ (or `folder`).
+- **`show`** `def show(fig, name: str | None = None, save_figure: bool = True, folder: pathlib.Path = WindowsPath('C:/Users/mcobp/business-analytics-portfolio/docs/figures'))`
+  Display a figure in a notebook, save it with save() if asked, then close it.
 
 ## `src.data_pipeline`
 

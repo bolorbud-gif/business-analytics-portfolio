@@ -47,6 +47,7 @@ def check_database(con) -> pd.DataFrame:
     rows = []
 
     def add(check, passed, detail):
+        """Record one check result."""
         rows.append({"check": check, "passed": bool(passed), "detail": detail})
 
     fk_on = con.execute("PRAGMA foreign_keys").fetchone()[0]
@@ -79,6 +80,12 @@ def check_database(con) -> pd.DataFrame:
     add("trade_wind_merged keeps every trade row except re-imports", merged == trade - reimports,
         f"{trade} trade rows - {reimports} re-imports = {trade - reimports}; view has {merged}")
     return pd.DataFrame(rows)
+
+
+def table_row_counts(con) -> pd.Series:
+    """Number of rows in each stored table."""
+    return pd.Series({t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in TABLES},
+                     name="rows")
 
 
 def coverage_by_year(con) -> pd.DataFrame:
@@ -123,6 +130,36 @@ def load_wind(con) -> pd.DataFrame:
     """, con)
 
 
+def missing_by_year(df: pd.DataFrame, columns: list[str], year: str = "year") -> pd.DataFrame:
+    """Percentage of missing values in each column, per year."""
+    return (df[columns].isna().groupby(df[year]).mean() * 100).round(1)
+
+
+def wind_trend(wind: pd.DataFrame, focus: str = "China") -> tuple[pd.DataFrame, dict]:
+    """Total wind capacity per year: the `focus` country vs all other countries combined.
+
+    Only countries with data for every year are used, so the totals are comparable across
+    years. If `focus` isn't in the data, a single "All" series is returned instead.
+    Returns (table with one column per series, info dict with series, labels, countries
+    and focus_ahead: whether `focus` exceeds the others in the last year, or None).
+    """
+    years = wind.groupby("country")["year"].nunique()
+    complete = wind[wind["country"].isin(years[years == years.max()].index)]
+    n = complete["country"].nunique()
+    if complete["country"].eq(focus).any():
+        groups = complete["country"].eq(focus).map({True: focus, False: "Other"})
+        series, labels = [focus, "Other"], [focus, f"Other {n - 1} countries"]
+    else:
+        groups, series, labels = "All", ["All"], [f"All {n} countries"]
+    trend = (complete.assign(group=groups)
+             .pivot_table(index="year", columns="group", values="wind_capacity_gw", aggfunc="sum")
+             .reset_index())
+    trend.columns.name = None
+    last = trend.iloc[-1]
+    focus_ahead = bool(last[focus] > last["Other"]) if focus in trend else None
+    return trend, {"series": series, "labels": labels, "countries": n, "focus_ahead": focus_ahead}
+
+
 def analysis_sample(panel: pd.DataFrame) -> pd.DataFrame:
     """Country-years usable for the multivariate analysis: imports, wind capacity and
     total generation all recorded and positive (so logs exist). Adds a size tercile."""
@@ -148,6 +185,12 @@ def describe_numeric(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
             "skew": stats.skew(v) if len(v) > 2 else float("nan"),
         })
     return pd.DataFrame(rows).set_index("column")
+
+
+def buyer_volumes(trade: pd.DataFrame, year: int, trade_flow: str = "Export") -> pd.Series:
+    """Total kg per partner for one year and direction (Export = what each country bought)."""
+    rows = trade[(trade["trade_flow"] == trade_flow) & (trade["year"] == year)]
+    return rows.groupby("partner")["quantity_kg"].sum()
 
 
 def market_shares(df: pd.DataFrame, by: str, value: str, top: int = 10) -> pd.DataFrame:

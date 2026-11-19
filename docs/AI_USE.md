@@ -54,6 +54,6 @@
 ## Verification
 
 - I checked Japan's 2024 import growth by hand (63.0%), ran the pipeline twice to confirm
-  nothing changed, and reviewed the quality report. 52 automated tests cover the pipeline
+  nothing changed, and reviewed the quality report. 60 automated tests cover the pipeline
   and the analysis functions.
 - I compile all of my work in one folder and save its version history in Google Drive.

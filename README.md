@@ -187,6 +187,12 @@ are buyers? Start with the [executive summary](docs/executive_summary.md); the f
 | Univariate, bivariate, multivariate analysis | [notebooks/02_eda_analysis.ipynb](notebooks/02_eda_analysis.ipynb) |
 | Executive summary | [docs/executive_summary.md](docs/executive_summary.md) |
 
+**Code architecture.** All analysis logic lives in the importable `src.analysis` package, and every
+function has a docstring. The notebooks only import and call it, so they contain no function
+definitions and no duplicated logic. Tests enforce all three rules
+(`tests/test_analysis.py::test_every_analysis_function_has_a_docstring`,
+`test_notebooks_import_the_package_and_define_no_functions`).
+
 Re-run the notebooks after rebuilding the database. Without the real data they fall back to the
 synthetic sample and say so; charts are saved to `docs/figures/` only from real data.
 

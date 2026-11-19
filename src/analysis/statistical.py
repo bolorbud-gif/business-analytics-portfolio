@@ -54,6 +54,21 @@ def residualize(df: pd.DataFrame, column: str, controls: list[str]) -> pd.Series
     return df[column] - X @ beta
 
 
+def size_adjusted_residuals(df: pd.DataFrame, x: str, y: str, controls: list[str],
+                            log: bool = True) -> pd.DataFrame:
+    """Residuals of x and y after removing the controls (log10 first if log=True).
+
+    Their correlation is the partial correlation; plotting them shows the relationship
+    with the controls held constant. Returns columns x_resid and y_resid.
+    """
+    d = df[[x, y, *controls]]
+    if log:
+        d = d.apply(log10_positive)
+    d = d.dropna()
+    return pd.DataFrame({"x_resid": residualize(d, x, controls),
+                         "y_resid": residualize(d, y, controls)})
+
+
 def partial_correlation(df: pd.DataFrame, x: str, y: str, controls: list[str],
                         log: bool = True) -> dict:
     """Correlation of x and y after removing what the controls explain.

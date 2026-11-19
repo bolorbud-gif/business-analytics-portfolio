@@ -55,18 +55,21 @@ def _compact(value, _pos=None) -> str:
 
 
 def _log_axis(ax, which: str = "y") -> None:
+    """Put one axis on a log scale with compact tick labels (1k, 1M)."""
     axis = ax.yaxis if which == "y" else ax.xaxis
     (ax.set_yscale if which == "y" else ax.set_xscale)("log")
     axis.set_major_formatter(FuncFormatter(_compact))
 
 
 def _titles(fig, title: str, subtitle: str | None = None) -> None:
+    """Left-aligned bold title (the finding) and an optional subtitle (measure, sample, years)."""
     fig.suptitle(title, x=0.01, ha="left", fontsize=13, fontweight="bold", color=INK)
     if subtitle:
         fig.text(0.01, 0.905, subtitle, ha="left", va="top", fontsize=9.5, color=INK_2)
 
 
 def _source(fig, text: str) -> None:
+    """Small muted source line in the bottom-left corner."""
     fig.text(0.01, 0.005, text, ha="left", va="bottom", fontsize=8, color=MUTED)
 
 
@@ -79,6 +82,22 @@ def save(fig, name: str, folder: Path = FIGURES) -> Path:
     path = folder / f"{name}.png"
     fig.savefig(path, dpi=300, bbox_inches="tight")
     fig.savefig(path.with_suffix(".svg"), bbox_inches="tight")
+    return path
+
+
+def show(fig, name: str | None = None, save_figure: bool = True, folder: Path = FIGURES):
+    """Display a figure in a notebook, save it with save() if asked, then close it.
+
+    Notebooks pass save_figure=False when running on the synthetic sample, so sample charts
+    never overwrite the real ones in docs/figures/. Returns the saved PNG path, if any.
+    """
+    path = save(fig, name, folder) if save_figure and name else None
+    try:
+        from IPython.display import display
+        display(fig)
+    except ImportError:  # plain Python: nothing to display in
+        pass
+    plt.close(fig)
     return path
 
 
@@ -239,6 +258,7 @@ def group_strip(df: pd.DataFrame, value: str, group: str, order: list[str], ylab
     apply_style()
     d = df[df[value] > 0]
     fig, ax = plt.subplots(figsize=(7, 4))
+    np.random.seed(0)  # Seaborn's jitter is random: fix it so the figure is reproducible
     sns.stripplot(data=d, x=group, y=value, hue=group, order=order, hue_order=order,
                   palette=SERIES[:len(order)], size=6, jitter=0.18, edgecolor=SURFACE,
                   linewidth=0.8, alpha=0.85, legend=False, ax=ax)
