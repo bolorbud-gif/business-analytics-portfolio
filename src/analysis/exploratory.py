@@ -246,3 +246,60 @@ def period_change(yearly: pd.DataFrame, trade_flow: str, start: int, end: int) -
         raise ValueError(f"{trade_flow} has no data for {start} and/or {end}")
     cols = ["quantity_kg", "value_kusd", "unit_value_usd_per_kg"]
     return ((rows.loc[end, cols] / rows.loc[start, cols] - 1) * 100).astype(float)
+
+
+def buyer_price_changes(trade: pd.DataFrame, start: int, end: int,
+                        trade_flow: str = "Export") -> pd.DataFrame:
+    """Each partner's volume and price (USD per kg) in both years, for partners present in both.
+
+    Sorted by start-year volume; volume_share_start is the partner's share of that volume.
+    """
+    rows = trade[(trade["trade_flow"] == trade_flow) & trade["year"].isin([start, end])]
+    sums = rows.groupby(["partner", "year"])[["quantity_kg", "trade_value_kusd"]].sum().unstack("year")
+    q, v = sums["quantity_kg"], sums["trade_value_kusd"] * 1000
+    keep = (q[start] > 0) & (q[end] > 0)
+    out = pd.DataFrame({"kg_start": q[start], "kg_end": q[end],
+                        "price_start": v[start] / q[start], "price_end": v[end] / q[end]})[keep]
+    out["price_change_pct"] = (out["price_end"] / out["price_start"] - 1) * 100
+    out["volume_share_start"] = out["kg_start"] / out["kg_start"].sum()
+    return out.sort_values("kg_start", ascending=False)
+
+
+def price_mix_decomposition(trade: pd.DataFrame, start: int, end: int,
+                            trade_flow: str = "Export", exclude: list[str] | None = None) -> dict:
+    """Split the change in the average price per kg into a price effect and a mix effect.
+
+    The average price can fall because buyers pay less (price) or because volume shifts
+    towards buyers who pay less (mix). The price effect is a fixed-basket (Laspeyres)
+    index: what the start year's volumes would cost at end-year prices, for partners
+    present in both years. The mix effect is the rest:
+    (1 + average change) = (1 + price effect) x (1 + mix effect).
+    exclude: partners to leave out, to see how much one large buyer drives the result.
+    """
+    if exclude:
+        trade = trade[~trade["partner"].isin(exclude)]
+    rows = trade[trade["trade_flow"] == trade_flow]
+    totals = rows.groupby("year")[["quantity_kg", "trade_value_kusd"]].sum()
+    average = totals["trade_value_kusd"] / totals["quantity_kg"]
+    average_change = average[end] / average[start] - 1
+    b = buyer_price_changes(trade, start, end, trade_flow)
+    w = b["volume_share_start"]
+    price_change = (w * b["price_end"]).sum() / (w * b["price_start"]).sum() - 1
+    return {"average_change_pct": float(average_change * 100),
+            "price_effect_pct": float(price_change * 100),
+            "mix_effect_pct": float(((1 + average_change) / (1 + price_change) - 1) * 100),
+            "buyers": len(b),
+            "volume_covered": float(b["kg_start"].sum() / totals.loc[start, "quantity_kg"]),
+            "volume_share_price_fell": float(w[b["price_end"] < b["price_start"]].sum())}
+
+
+def growth_vs_wind(panel: pd.DataFrame, year: int) -> pd.DataFrame:
+    """Country rows for one year with both import growth and wind generation change recorded.
+
+    Adds import_ratio = this year's imports / last year's (1 + growth/100), which can be
+    drawn on a log axis: the explosive growth from tiny bases otherwise flattens the chart.
+    Ranks, and so the Spearman correlation, are the same as for the growth rate itself.
+    """
+    cols = ["country", "year", "import_growth_pct", "wind_generation_change_twh"]
+    d = panel.loc[panel["year"] == year, cols].dropna()
+    return d.assign(import_ratio=1 + d["import_growth_pct"] / 100)

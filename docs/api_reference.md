@@ -13,6 +13,8 @@ Exploratory analysis: open the Assignment 4 database, check its quality, describ
 
 - **`analysis_sample`** `def analysis_sample(panel: pandas.DataFrame) -> pandas.DataFrame`
   Country-years usable for the multivariate analysis: imports, wind capacity and total generation all recorded and positive (so logs exist). Adds a size tercile.
+- **`buyer_price_changes`** `def buyer_price_changes(trade: pandas.DataFrame, start: int, end: int, trade_flow: str = 'Export') -> pandas.DataFrame`
+  Each partner's volume and price (USD per kg) in both years, for partners present in both.
 - **`buyer_volumes`** `def buyer_volumes(trade: pandas.DataFrame, year: int, trade_flow: str = 'Export') -> pandas.Series`
   Total kg per partner for one year and direction (Export = what each country bought).
 - **`check_database`** `def check_database(con) -> pandas.DataFrame`
@@ -23,6 +25,8 @@ Exploratory analysis: open the Assignment 4 database, check its quality, describ
   Number of trade rows per year and direction: shows which years each direction covers.
 - **`describe_numeric`** `def describe_numeric(df: pandas.DataFrame, columns: list[str]) -> pandas.DataFrame`
   Univariate summary: count, missing, centre, spread and skew for each column.
+- **`growth_vs_wind`** `def growth_vs_wind(panel: pandas.DataFrame, year: int) -> pandas.DataFrame`
+  Country rows for one year with both import growth and wind generation change recorded.
 - **`load_country_panel`** `def load_country_panel(con) -> pandas.DataFrame`
   One row per partner country and year: imports from China, growth, wind, and size.
 - **`load_trade`** `def load_trade(con) -> pandas.DataFrame`
@@ -37,6 +41,8 @@ Exploratory analysis: open the Assignment 4 database, check its quality, describ
   Open the database with foreign keys ON. Returns (connection, path).
 - **`period_change`** `def period_change(yearly: pandas.DataFrame, trade_flow: str, start: int, end: int) -> pandas.Series`
   Percent change in quantity, value and unit value between two years for one direction.
+- **`price_mix_decomposition`** `def price_mix_decomposition(trade: pandas.DataFrame, start: int, end: int, trade_flow: str = 'Export', exclude: list[str] | None = None) -> dict`
+  Split the change in the average price per kg into a price effect and a mix effect.
 - **`table_row_counts`** `def table_row_counts(con) -> pandas.Series`
   Number of rows in each stored table.
 - **`wind_trend`** `def wind_trend(wind: pandas.DataFrame, focus: str = 'China') -> tuple[pandas.DataFrame, dict]`
@@ -46,7 +52,7 @@ Exploratory analysis: open the Assignment 4 database, check its quality, describ
 
 ### `src.analysis.statistical`
 
-Statistical analysis: correlation, partial correlation, regression and growth summaries.
+Statistical analysis: correlation, partial correlation, regression, hypothesis tests.
 
 - **`bootstrap_ci`** `def bootstrap_ci(values, statistic, n_boot: int = 2000, level: float = 0.95, seed: int = 0) -> dict`
   Percentile bootstrap confidence interval for any statistic of a 1-D sample.
@@ -60,6 +66,10 @@ Statistical analysis: correlation, partial correlation, regression and growth su
   correlation() for several column pairs, one row each.
 - **`fit_log_ols`** `def fit_log_ols(df: pandas.DataFrame, y: str, xs: list[str], year_effects: bool = True, cluster: str | None = 'partner')`
   OLS of log10(y) on log10(xs), with optional year fixed effects.
+- **`fold_change`** `def fold_change(elasticity: float, factor: float = 10.0) -> float`
+  Business reading of an elasticity: y is multiplied by this when x is multiplied by `factor`. An elasticity of 0.94 means 10x the wind capacity goes with 8.7x the imports.
+- **`group_assumptions`** `def group_assumptions(df: pandas.DataFrame, value: str, group: str, order: list | None = None, log: bool = False, alpha: float = 0.05) -> pandas.DataFrame`
+  Assumption checks for comparing groups: Shapiro-Wilk in each group, Levene across them.
 - **`growth_summary`** `def growth_summary(growth_pct: pandas.Series, extreme: float = 500.0) -> dict`
   Summary of percentage growth rates. Rates from tiny bases explode, so the median and interquartile range are reported instead of the mean.
 - **`hypothesis_table`** `def hypothesis_table(tests: list[dict], alpha: float = 0.05) -> pandas.DataFrame`
@@ -68,9 +78,11 @@ Statistical analysis: correlation, partial correlation, regression and growth su
   log10 of the positive values; zero or negative becomes NaN (log is undefined).
 - **`normality_test`** `def normality_test(values: pandas.Series, log: bool = False, alpha: float = 0.05) -> dict`
   Shapiro-Wilk test of normality (on log10 values if log=True). Low p = not normal.
-- **`paired_change`** `def paired_change(df: pandas.DataFrame, entity: str, period: str, value: str, start, end) -> dict`
-  Wilcoxon signed-rank test on the change of `value` for entities seen in both periods.
-- **`partial_correlation`** `def partial_correlation(df: pandas.DataFrame, x: str, y: str, controls: list[str], log: bool = True) -> dict`
+- **`paired_change`** `def paired_change(df: pandas.DataFrame, entity: str, period: str, value: str, start, end, test: str = 'wilcoxon') -> dict`
+  Paired test of the change in `value` for entities seen in both periods.
+- **`paired_log_ratios`** `def paired_log_ratios(df: pandas.DataFrame, entity: str, period: str, value: str, start, end) -> pandas.Series`
+  log(end / start) of `value` for each entity seen, with a positive value, in both periods.
+- **`partial_correlation`** `def partial_correlation(df: pandas.DataFrame, x: str, y: str, controls: list[str], log: bool = True, method: str = 'pearson') -> dict`
   Correlation of x and y after removing what the controls explain.
 - **`regression_diagnostics`** `def regression_diagnostics(result) -> pandas.DataFrame`
   Assumption checks for an OLS result: unequal variance, residual normality, collinearity.
@@ -78,6 +90,8 @@ Statistical analysis: correlation, partial correlation, regression and growth su
   What is left of `column` after a linear fit on the controls (with intercept).
 - **`size_adjusted_residuals`** `def size_adjusted_residuals(df: pandas.DataFrame, x: str, y: str, controls: list[str], log: bool = True) -> pandas.DataFrame`
   Residuals of x and y after removing the controls (log10 first if log=True).
+- **`split_medians`** `def split_medians(df: pandas.DataFrame, value: str, by: str) -> dict`
+  Business reading of a correlation: the median of `value` where `by` is above its median, versus where it is at or below it.
 - **`strength`** `def strength(r: float) -> str`
   Plain-language size of a correlation coefficient.
 - **`tidy_coefficients`** `def tidy_coefficients(result) -> pandas.DataFrame`
@@ -107,8 +121,10 @@ Charts for the exploratory analysis (Matplotlib + Seaborn).
   Histogram with log-spaced bins, for right-skewed positive values.
 - **`market_share_bars`** `def market_share_bars(shares: pandas.DataFrame, title: str, subtitle: str, source: str, ylabel: str = 'Buying country')`
   Horizontal bars of each country's share (output of exploratory.market_shares).
-- **`pair_plot`** `def pair_plot(df: pandas.DataFrame, columns: list[str], labels: list[str], hue: str, hue_order: list[str], title: str, subtitle: str, source: str)`
+- **`pair_plot`** `def pair_plot(df: pandas.DataFrame, columns: list[str], labels: list[str], hue: str, hue_order: list[str], title: str, subtitle: str, source: str, height: float = 2.1)`
   Seaborn pair plot of log10 values: every pairwise relationship at once, coloured by group.
+- **`relationship_scatter`** `def relationship_scatter(df: pandas.DataFrame, x: str, y: str, xlabel: str, ylabel: str, title: str, subtitle: str, source: str, note: str | None = None, xscale: str = 'linear', yscale: str = 'linear', linthresh: float = 0.1, ref_x: float | None = None, ref_y: float | None = None)`
+  Scatter of one relationship, to show what a reported correlation looks like.
 - **`save`** `def save(fig, name: str, folder: pathlib.Path = WindowsPath('C:/Users/mcobp/business-analytics-portfolio/docs/figures')) -> pathlib.Path`
   Save a figure as 300 dpi PNG and vector SVG in docs/figures/ (or `folder`).
 - **`show`** `def show(fig, name: str | None = None, save_figure: bool = True, folder: pathlib.Path = WindowsPath('C:/Users/mcobp/business-analytics-portfolio/docs/figures'))`

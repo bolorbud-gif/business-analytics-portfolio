@@ -320,6 +320,116 @@ def test_notebooks_import_the_package_and_define_no_functions(notebook):
     assert not re.search(r"^\s*(def|class) ", code, re.M), "logic belongs in src/analysis"
 
 
+def test_group_assumptions_runs_shapiro_per_group_and_levene():
+    rng = np.random.default_rng(8)
+    same = pd.DataFrame({"g": ["a"] * 80 + ["b"] * 80,
+                         "v": np.r_[rng.normal(0, 1, 80), rng.normal(2, 1, 80)]})
+    out = st.group_assumptions(same, "v", "g").set_index("check")
+    assert list(out.index) == ["Normal within a", "Normal within b", "Equal variances across groups"]
+    assert out["ok"].all()
+    spread = same.assign(v=np.r_[rng.normal(0, 1, 80), rng.normal(0, 6, 80)])
+    assert not st.group_assumptions(spread, "v", "g").set_index("check").loc[
+        "Equal variances across groups", "ok"]
+
+
+def test_compare_groups_reports_epsilon_squared():
+    rng = np.random.default_rng(4)
+    df = pd.DataFrame({"g": ["a"] * 50 + ["b"] * 50,
+                       "v": np.r_[rng.normal(0, 1, 50), rng.normal(3, 1, 50)]})
+    out = st.compare_groups(df, "v", "g")
+    assert out["epsilon_sq"] == pytest.approx(out["statistic"] / 99)
+    assert out["effect"] == "large"
+
+
+def test_paired_change_effect_sizes_and_tests():
+    df = pd.DataFrame({"who": list("abcdefgh") * 2, "year": [1] * 8 + [2] * 8,
+                       "price": [10.0] * 8 + [5.0, 5, 5, 5, 5, 5, 5, 20]})
+    out = st.paired_change(df, "who", "year", "price", 1, 2, test="sign")
+    assert out["test"] == "Sign test" and out["p"] == out["sign_p"] == pytest.approx(0.0703, abs=1e-3)
+    assert out["statistic"] == 7  # seven of eight fell
+    assert out["ci_low_pct"] <= out["median_change_pct"] <= out["ci_high_pct"]
+    assert -1 < out["rank_biserial"] < 0
+    all_fall = df.assign(price=[10.0] * 8 + [5.0, 4, 6, 3, 7, 2, 8, 9])
+    assert st.paired_change(all_fall, "who", "year", "price", 1, 2)["rank_biserial"] == -1
+    with pytest.raises(ValueError):
+        st.paired_change(df, "who", "year", "price", 1, 2, test="t")
+
+
+def test_partial_correlation_rank_version_agrees():
+    df = confounded()
+    pearson = st.partial_correlation(df, "x", "y", ["z"])
+    ranks = st.partial_correlation(df, "x", "y", ["z"], method="spearman")
+    assert ranks["method"] == "spearman" and abs(ranks["r"] - pearson["r"]) < 0.15
+
+
+def test_fold_change_and_split_medians():
+    assert st.fold_change(1.0) == pytest.approx(10) and st.fold_change(0.0) == pytest.approx(1)
+    df = pd.DataFrame({"by": [1, 2, 3, 4], "v": [10.0, 20.0, 30.0, 40.0]})
+    assert st.split_medians(df, "v", "by") == {"above": 35.0, "below": 15.0, "n_above": 2,
+                                                "n_below": 2}
+
+
+def test_regression_diagnostics_include_shapiro():
+    out = st.regression_diagnostics(st.fit_log_ols(confounded(), "y", ["x", "z"]))
+    assert {"Breusch-Pagan", "Shapiro-Wilk", "Jarque-Bera"} <= set(out["test"])
+
+
+def test_hypothesis_table_leads_with_magnitude_and_effect_size():
+    table = st.hypothesis_table([
+        {"hypothesis": "A", "test": "t", "statistic": 1, "p": 0.01, "magnitude": "big",
+         "effect_size": 0.5},
+        {"hypothesis": "B", "test": "t", "statistic": 1, "p": 0.40, "magnitude": "small",
+         "effect_size": 0.1},
+    ])
+    assert list(table.columns[:3]) == ["hypothesis", "magnitude", "effect_size"]
+    assert table["statistically_significant"].tolist() == [True, False]
+
+
+def trade_two_buyers(prices_end, kg_end):
+    """Two buyers, A (USD 10/kg) and B (USD 2/kg) in 2023, 50 kg each."""
+    kg = [50.0, 50.0, *kg_end]
+    price = [10.0, 2.0, *prices_end]
+    return pd.DataFrame({"trade_flow": "Export", "year": [2023, 2023, 2024, 2024],
+                         "partner": ["A", "B", "A", "B"], "quantity_kg": kg,
+                         "trade_value_kusd": [k * p / 1000 for k, p in zip(kg, price)]})
+
+
+def test_price_mix_decomposition_separates_price_from_mix():
+    mix_only = ex.price_mix_decomposition(trade_two_buyers([10.0, 2.0], [10.0, 90.0]), 2023, 2024)
+    assert mix_only["price_effect_pct"] == pytest.approx(0)  # nobody's price changed ...
+    assert mix_only["mix_effect_pct"] == pytest.approx(mix_only["average_change_pct"])  # ... volume moved
+    assert mix_only["average_change_pct"] == pytest.approx((2.8 / 6 - 1) * 100)
+    price_only = ex.price_mix_decomposition(trade_two_buyers([5.0, 1.0], [50.0, 50.0]), 2023, 2024)
+    assert price_only["price_effect_pct"] == pytest.approx(-50)
+    assert price_only["mix_effect_pct"] == pytest.approx(0)
+    assert price_only["volume_share_price_fell"] == pytest.approx(1)
+    without_a = ex.price_mix_decomposition(trade_two_buyers([5.0, 1.0], [50.0, 50.0]), 2023, 2024,
+                                           exclude=["A"])
+    assert without_a["buyers"] == 1
+
+
+def test_buyer_price_changes_in_dollars_per_kg():
+    out = ex.buyer_price_changes(trade_two_buyers([5.0, 1.0], [50.0, 50.0]), 2023, 2024)
+    assert out.loc["A", "price_start"] == pytest.approx(10) and out.loc["A", "price_end"] == pytest.approx(5)
+    assert out["volume_share_start"].sum() == pytest.approx(1)
+
+
+def test_growth_vs_wind_ratio():
+    panel = pd.DataFrame({"country": ["A", "B", "C"], "year": [2024, 2024, 2023],
+                          "import_growth_pct": [100.0, -50.0, 10.0],
+                          "wind_generation_change_twh": [1.0, -0.5, 2.0]})
+    out = ex.growth_vs_wind(panel, 2024)
+    assert out["import_ratio"].tolist() == [2.0, 0.5]
+
+
+def test_relationship_scatter_renders(tmp_path):
+    df = pd.DataFrame({"x": [-2.0, -0.05, 0.0, 0.5, 20.0], "y": [0.1, 1.0, 3.0, 0.5, 50.0]})
+    fig = ch.relationship_scatter(df, "x", "y", "X", "Y", "t", "s", "src", note="rho",
+                                  xscale="symlog", yscale="log", ref_x=0, ref_y=1)
+    assert ch.save(fig, "scatter", tmp_path).stat().st_size > 5000
+    ch.plt.close(fig)
+
+
 def test_buyer_volumes_sums_one_year_and_direction():
     trade = pd.DataFrame({"trade_flow": ["Export", "Export", "Import", "Export"],
                           "year": [2024, 2024, 2024, 2023], "partner": ["A", "A", "A", "B"],

@@ -81,7 +81,9 @@ def save(fig, name: str, folder: Path = FIGURES) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{name}.png"
     fig.savefig(path, dpi=300, bbox_inches="tight")
-    fig.savefig(path.with_suffix(".svg"), bbox_inches="tight")
+    # no date stamp and fixed element ids, so an unchanged chart gives an identical SVG
+    with plt.rc_context({"svg.hashsalt": "rare-earth"}):
+        fig.savefig(path.with_suffix(".svg"), bbox_inches="tight", metadata={"Date": None})
     return path
 
 
@@ -206,6 +208,42 @@ def confounding_scatter(raw: pd.DataFrame, x: str, y: str, group: str, group_ord
     return fig
 
 
+def relationship_scatter(df: pd.DataFrame, x: str, y: str, xlabel: str, ylabel: str, title: str,
+                         subtitle: str, source: str, note: str | None = None,
+                         xscale: str = "linear", yscale: str = "linear", linthresh: float = 0.1,
+                         ref_x: float | None = None, ref_y: float | None = None):
+    """Scatter of one relationship, to show what a reported correlation looks like.
+
+    xscale/yscale: "linear", "log" or "symlog" (log-like but allows zero and negative
+    values, linear within +-linthresh). ref_x/ref_y draw reference lines, e.g. no change.
+    note is printed in the top-left corner (the correlation and its p-value).
+    """
+    apply_style()
+    d = df[[x, y]].dropna()
+    fig, ax = plt.subplots(figsize=(7.5, 5))
+    if ref_x is not None:
+        ax.axvline(ref_x, color=AXIS, linewidth=1)
+    if ref_y is not None:
+        ax.axhline(ref_y, color=AXIS, linewidth=1)
+    ax.scatter(d[x], d[y], s=48, color=BLUE, edgecolor=SURFACE, linewidth=1, alpha=0.9, zorder=3)
+    for axis, scale, setter in [(ax.xaxis, xscale, ax.set_xscale), (ax.yaxis, yscale, ax.set_yscale)]:
+        if scale == "symlog":
+            setter("symlog", linthresh=linthresh)
+        elif scale == "log":
+            setter("log")
+        if scale != "linear":
+            axis.set_major_formatter(FuncFormatter(lambda v, _p: f"{v:g}"))
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    if note:
+        ax.text(0.02, 0.97, note, transform=ax.transAxes, ha="left", va="top", fontsize=9.5,
+                color=INK_2)
+    _titles(fig, title, subtitle)
+    _source(fig, source)
+    fig.tight_layout(rect=(0, 0.03, 1, 0.86))
+    return fig
+
+
 def correlation_heatmap(matrix: pd.DataFrame, labels: list[str], title: str, subtitle: str,
                         source: str):
     """Correlation matrix (lower triangle) on a blue (positive) / gray (zero) / red scale."""
@@ -281,14 +319,19 @@ def group_strip(df: pd.DataFrame, value: str, group: str, order: list[str], ylab
 
 
 def pair_plot(df: pd.DataFrame, columns: list[str], labels: list[str], hue: str,
-              hue_order: list[str], title: str, subtitle: str, source: str):
-    """Seaborn pair plot of log10 values: every pairwise relationship at once, coloured by group."""
+              hue_order: list[str], title: str, subtitle: str, source: str,
+              height: float = 2.1):
+    """Seaborn pair plot of log10 values: every pairwise relationship at once, coloured by group.
+
+    Rows with a zero or negative value in any column are left out (log10 is undefined).
+    height is the size of each panel in inches.
+    """
     apply_style()
     d = df[columns].apply(lambda s: np.log10(s.where(s > 0))).rename(columns=dict(zip(columns, labels)))
     d[hue] = df[hue].astype(str)
     n = len(hue_order)
     grid = sns.pairplot(d.dropna(), hue=hue, hue_order=hue_order, palette=SERIES[:n],
-                        corner=True, height=2.1, diag_kind="kde",
+                        corner=True, height=height, diag_kind="kde",
                         plot_kws={"s": 28, "edgecolor": SURFACE, "linewidth": 0.6, "alpha": 0.85},
                         diag_kws={"fill": True, "alpha": 0.3, "linewidth": 1.5})
     grid.figure.set_facecolor(SURFACE)
@@ -297,10 +340,12 @@ def pair_plot(df: pd.DataFrame, columns: list[str], labels: list[str], hue: str,
             ax.grid(True, color=GRID, linewidth=0.5)
     sns.move_legend(grid, "upper right", bbox_to_anchor=(0.92, 0.82), title="Country size",
                     frameon=False)
-    grid.figure.subplots_adjust(top=0.86, bottom=0.1, left=0.09)
-    grid.figure.suptitle(title, x=0.01, y=0.985, ha="left", fontsize=13, fontweight="bold",
-                         color=INK)
-    grid.figure.text(0.01, 0.945, subtitle, ha="left", va="top", fontsize=9.5, color=INK_2)
+    inches = grid.figure.get_figheight()  # keep the title block the same height at any size
+    grid.figure.subplots_adjust(top=1 - 0.85 / inches, bottom=0.1, left=0.09)
+    grid.figure.suptitle(title, x=0.01, y=1 - 0.13 / inches, ha="left", fontsize=13,
+                         fontweight="bold", color=INK)
+    grid.figure.text(0.01, 1 - 0.47 / inches, subtitle, ha="left", va="top", fontsize=9.5,
+                     color=INK_2)
     _source(grid.figure, source)
     return grid.figure
 

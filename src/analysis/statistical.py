@@ -1,7 +1,9 @@
-"""Statistical analysis: correlation, partial correlation, regression and growth summaries.
+"""Statistical analysis: correlation, partial correlation, regression, hypothesis tests.
 
 Trade and electricity values are heavily right-skewed (a few large countries), so the
-functions default to rank (Spearman) correlation or work on log10 values.
+functions default to rank (Spearman) correlation or work on log10 values. Every test
+returns an effect size next to its p-value, and the assumption checks (Shapiro-Wilk,
+Levene, regression diagnostics) say which test is safe to use.
 """
 
 import numpy as np
@@ -70,24 +72,36 @@ def size_adjusted_residuals(df: pd.DataFrame, x: str, y: str, controls: list[str
 
 
 def partial_correlation(df: pd.DataFrame, x: str, y: str, controls: list[str],
-                        log: bool = True) -> dict:
+                        log: bool = True, method: str = "pearson") -> dict:
     """Correlation of x and y after removing what the controls explain.
 
     With log=True all columns are log10-transformed first (rows with values <= 0 are
-    dropped). The p-value uses n - 2 - (number of controls) degrees of freedom.
+    dropped). method="spearman" works on ranks instead, so it needs no normality: use it
+    as a check when the residuals fail Shapiro-Wilk. The p-value uses n - 2 - (number of
+    controls) degrees of freedom.
     """
+    if method not in ("pearson", "spearman"):
+        raise ValueError("method must be 'pearson' or 'spearman'")
     cols = [x, y, *controls]
     d = df[cols].copy()
     if log:
         d = d.apply(log10_positive)
     d = d.dropna()
+    if method == "spearman":
+        d = d.rank()
     rx, ry = residualize(d, x, controls), residualize(d, y, controls)
     r = float(np.corrcoef(rx, ry)[0, 1])
     dof = len(d) - 2 - len(controls)
     t = r * np.sqrt(dof / (1 - r ** 2))
     p = float(2 * stats.t.sf(abs(t), dof))
-    return {"x": x, "y": y, "controls": ", ".join(controls), "log": log, "n": len(d),
-            "r": r, "p": p, "strength": strength(r)}
+    return {"x": x, "y": y, "controls": ", ".join(controls), "log": log, "method": method,
+            "n": len(d), "r": r, "p": p, "strength": strength(r)}
+
+
+def fold_change(elasticity: float, factor: float = 10.0) -> float:
+    """Business reading of an elasticity: y is multiplied by this when x is multiplied by
+    `factor`. An elasticity of 0.94 means 10x the wind capacity goes with 8.7x the imports."""
+    return float(factor ** elasticity)
 
 
 def fit_log_ols(df: pd.DataFrame, y: str, xs: list[str], year_effects: bool = True,
@@ -139,39 +153,124 @@ def growth_summary(growth_pct: pd.Series, extreme: float = 500.0) -> dict:
 # --- Hypothesis tests and assumption checks ----------------------------------------------
 
 def normality_test(values: pd.Series, log: bool = False, alpha: float = 0.05) -> dict:
-    """Shapiro-Wilk test of normality (on log10 values if log=True). Low p = not normal."""
+    """Shapiro-Wilk test of normality (on log10 values if log=True). Low p = not normal.
+
+    Also returns the skew, which says in which direction the data depart from normal.
+    """
     v = values.dropna()
     if log:
         v = log10_positive(v).dropna()
     w, p = stats.shapiro(v)
     return {"test": "Shapiro-Wilk", "scale": "log10" if log else "raw", "n": len(v),
-            "statistic": float(w), "p": float(p), "normal": bool(p >= alpha)}
+            "statistic": float(w), "p": float(p), "skew": float(stats.skew(v)),
+            "normal": bool(p >= alpha)}
+
+
+def group_assumptions(df: pd.DataFrame, value: str, group: str, order: list | None = None,
+                      log: bool = False, alpha: float = 0.05) -> pd.DataFrame:
+    """Assumption checks for comparing groups: Shapiro-Wilk in each group, Levene across them.
+
+    Levene is median-centred (the Brown-Forsythe form), which stays reliable when the data
+    aren't normal. With log=True both run on log10 values. One row per check:
+    check, test, scale, n, statistic, p, ok (p >= alpha: no evidence the assumption fails).
+    """
+    order = order or sorted(df[group].dropna().unique())
+    samples = [df.loc[df[group] == g, value].dropna() for g in order]
+    if log:
+        samples = [log10_positive(s).dropna() for s in samples]
+    scale = "log10" if log else "raw"
+    rows = []
+    for g, s in zip(order, samples):
+        w, p = stats.shapiro(s)
+        rows.append((f"Normal within {g}", "Shapiro-Wilk", scale, len(s), w, p))
+    stat, p = stats.levene(*samples, center="median")
+    rows.append(("Equal variances across groups", "Levene (median-centred)", scale,
+                 int(sum(len(s) for s in samples)), stat, p))
+    out = pd.DataFrame(rows, columns=["check", "test", "scale", "n", "statistic", "p"])
+    out["ok"] = out["p"] >= alpha
+    return out
+
+
+def _epsilon_size(e2: float) -> str:
+    """Conventional label for epsilon-squared: small from 0.01, medium 0.08, large 0.26."""
+    return ("negligible" if e2 < 0.01 else "small" if e2 < 0.08 else "medium" if e2 < 0.26
+            else "large")
 
 
 def compare_groups(df: pd.DataFrame, value: str, group: str, order: list | None = None) -> dict:
-    """Kruskal-Wallis test: do the groups' distributions differ? (no normality assumed)"""
+    """Kruskal-Wallis test: do the groups' distributions differ? (no normality assumed)
+
+    The effect size is epsilon-squared, H / (n - 1): the share of the variation in ranks
+    explained by the groups (0 to 1).
+    """
     order = order or sorted(df[group].dropna().unique())
     samples = [df.loc[df[group] == g, value].dropna() for g in order]
     h, p = stats.kruskal(*samples)
-    return {"test": "Kruskal-Wallis", "groups": len(order), "n": int(sum(len(s) for s in samples)),
-            "statistic": float(h), "p": float(p),
+    n = int(sum(len(s) for s in samples))
+    e2 = float(h / (n - 1))
+    return {"test": "Kruskal-Wallis", "groups": len(order), "n": n,
+            "statistic": float(h), "p": float(p), "epsilon_sq": e2, "effect": _epsilon_size(e2),
             "medians": {str(g): float(s.median()) for g, s in zip(order, samples)}}
 
 
-def paired_change(df: pd.DataFrame, entity: str, period: str, value: str, start, end) -> dict:
-    """Wilcoxon signed-rank test on the change of `value` for entities seen in both periods.
+def _log_ratio_to_pct(v: float) -> float:
+    """A natural-log ratio as a percent change: log(0.5) -> -50.0."""
+    return float((np.exp(v) - 1) * 100)
 
-    Tests the log ratio end/start, so a halving and a doubling count equally. Reports the
-    median change in percent and the share of entities whose value fell.
-    """
+
+def paired_log_ratios(df: pd.DataFrame, entity: str, period: str, value: str, start,
+                      end) -> pd.Series:
+    """log(end / start) of `value` for each entity seen, with a positive value, in both periods."""
     wide = df.pivot_table(index=entity, columns=period, values=value, aggfunc="mean")
     pair = wide[[start, end]].dropna()
     pair = pair[(pair > 0).all(axis=1)]
-    ratio = np.log(pair[end] / pair[start])
-    w, p = stats.wilcoxon(ratio)
-    return {"test": "Wilcoxon signed-rank", "n": len(pair), "statistic": float(w), "p": float(p),
-            "median_change_pct": float((np.exp(ratio.median()) - 1) * 100),
-            "share_falling": float((ratio < 0).mean())}
+    return np.log(pair[end] / pair[start]).rename("log_ratio")
+
+
+def paired_change(df: pd.DataFrame, entity: str, period: str, value: str, start, end,
+                  test: str = "wilcoxon") -> dict:
+    """Paired test of the change in `value` for entities seen in both periods.
+
+    Works on the log ratio end/start, so a halving and a doubling count equally.
+    test="wilcoxon" (signed-rank) assumes the changes are symmetric around their median;
+    test="sign" only counts rises and falls, so it assumes nothing about their shape: use
+    it when the log ratios are skewed. Both p-values are always returned, plus the paired
+    t-test's (t_test_p) for comparison only: it is valid only if the log ratios are normal.
+
+    Effect sizes: the median change in percent with a 95% bootstrap interval (the business
+    magnitude), the share of entities whose value fell, and the matched-pairs rank-biserial
+    correlation (-1 = all fell, +1 = all rose).
+    """
+    if test not in ("wilcoxon", "sign"):
+        raise ValueError("test must be 'wilcoxon' or 'sign'")
+    ratio = paired_log_ratios(df, entity, period, value, start, end)
+    w, wilcoxon_p = stats.wilcoxon(ratio)
+    moved = ratio[ratio != 0]
+    falls = int((moved < 0).sum())
+    sign_p = float(stats.binomtest(falls, len(moved)).pvalue)
+    ranks = stats.rankdata(moved.abs())
+    up, down = ranks[moved.to_numpy() > 0].sum(), ranks[moved.to_numpy() < 0].sum()
+    ci = bootstrap_ci(ratio, np.median)
+    pct = _log_ratio_to_pct
+    return {"test": "Wilcoxon signed-rank" if test == "wilcoxon" else "Sign test",
+            "n": len(ratio), "statistic": float(w) if test == "wilcoxon" else falls,
+            "p": float(wilcoxon_p) if test == "wilcoxon" else sign_p,
+            "wilcoxon_p": float(wilcoxon_p), "sign_p": sign_p,
+            "t_test_p": float(stats.ttest_1samp(ratio, 0).pvalue),
+            "median_change_pct": pct(ratio.median()),
+            "ci_low_pct": pct(ci["ci_low"]), "ci_high_pct": pct(ci["ci_high"]),
+            "share_falling": float((ratio < 0).mean()),
+            "rank_biserial": float((up - down) / (up + down)),
+            "skew": float(stats.skew(ratio))}
+
+
+def split_medians(df: pd.DataFrame, value: str, by: str) -> dict:
+    """Business reading of a correlation: the median of `value` where `by` is above its
+    median, versus where it is at or below it."""
+    d = df[[value, by]].dropna()
+    above = d[by] > d[by].median()
+    return {"above": float(d.loc[above, value].median()), "below": float(d.loc[~above, value].median()),
+            "n_above": int(above.sum()), "n_below": int((~above).sum())}
 
 
 def top_share(values, k: int = 5) -> float:
@@ -192,19 +291,26 @@ def bootstrap_ci(values, statistic, n_boot: int = 2000, level: float = 0.95, see
 
 
 def regression_diagnostics(result) -> pd.DataFrame:
-    """Assumption checks for an OLS result: unequal variance, residual normality, collinearity."""
+    """Assumption checks for an OLS result: unequal variance, residual normality, collinearity.
+
+    Breusch-Pagan is the regression counterpart of Levene's test; residual normality is
+    checked twice, with Shapiro-Wilk and Jarque-Bera.
+    """
     from statsmodels.stats.diagnostic import het_breuschpagan
     from statsmodels.stats.outliers_influence import variance_inflation_factor
     from statsmodels.stats.stattools import jarque_bera
 
     exog, names = result.model.exog, result.model.exog_names
     bp_p = het_breuschpagan(result.resid, exog)[1]
+    sw_p = stats.shapiro(result.resid).pvalue
     jb_p = jarque_bera(result.resid)[1]
     vifs = {n: variance_inflation_factor(exog, i) for i, n in enumerate(names) if n != "Intercept"}
     worst = max(vifs, key=vifs.get)
     rows = [
         ("Equal variance of residuals", "Breusch-Pagan", bp_p, bp_p >= 0.05,
          "no heteroskedasticity" if bp_p >= 0.05 else "heteroskedastic: rely on robust SEs"),
+        ("Residuals normally distributed", "Shapiro-Wilk", sw_p, sw_p >= 0.05,
+         "normal" if sw_p >= 0.05 else "not normal: interpret p-values with care"),
         ("Residuals normally distributed", "Jarque-Bera", jb_p, jb_p >= 0.05,
          "normal" if jb_p >= 0.05 else "not normal: interpret p-values with care"),
         ("No multicollinearity", f"max VIF ({worst})", vifs[worst], vifs[worst] < 5,
@@ -213,16 +319,28 @@ def regression_diagnostics(result) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["assumption", "test", "value", "ok", "meaning"])
 
 
+HYPOTHESIS_COLUMNS = ["hypothesis", "magnitude", "effect_measure", "effect_size", "effect", "test",
+                      "n", "statistic", "p", "p_holm", "statistically_significant", "result"]
+
+
 def hypothesis_table(tests: list[dict], alpha: float = 0.05) -> pd.DataFrame:
     """Collect hypothesis tests and adjust for testing several at once (Holm method).
 
-    Each dict needs: hypothesis, test, statistic, p. A hypothesis is "supported" when
-    its Holm-adjusted p-value is below alpha.
+    Each dict needs: hypothesis, test, statistic, p. Give each one its business magnitude
+    ("magnitude", in plain units) and effect size ("effect_measure", "effect_size",
+    "effect") too: they come first in the table, because a p-value alone says nothing
+    about how large or important an effect is.
+
+    A hypothesis is "Supported" when its Holm-adjusted p-value is below alpha. That is
+    statistical significance only; whether the effect matters is a separate, business
+    judgement made from the magnitude.
     """
     from statsmodels.stats.multitest import multipletests
 
     df = pd.DataFrame(tests)
     reject, adjusted, *_ = multipletests(df["p"], alpha=alpha, method="holm")
     df["p_holm"] = adjusted
+    df["statistically_significant"] = reject
     df["result"] = np.where(reject, "Supported", "Not supported")
-    return df
+    ordered = [c for c in HYPOTHESIS_COLUMNS if c in df]
+    return df[ordered + [c for c in df if c not in ordered]]

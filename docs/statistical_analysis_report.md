@@ -12,17 +12,22 @@ rare-earth compounds (HS 284690) with 73 partners, and electricity data for 70 c
 
 ## 1. Summary of results
 
-| # | Hypothesis | Test | Result | Holm p | Verdict |
-|---|---|---|---|---:|---|
-| H1 | Imports from China rise with wind capacity | Spearman | ρ = 0.52, n = 102 | < 0.001 | ✅ Supported |
-| H2 | Wind still matters after controlling for country size | Partial correlation (log10) | r = 0.13 | 0.22 | ❌ Not supported |
-| H3 | Faster wind growth goes with faster import growth (2024) | Spearman | ρ = 0.25, n = 49 | 0.22 | ❌ Not supported |
-| H4 | Buyers paid less per kg in 2024 than in 2023 | Wilcoxon signed-rank, paired | median −11.0%, n = 52 | 0.22 | ❌ Not supported |
-| H5 | Imports differ by country size | Kruskal-Wallis | H = 50.6, n = 102 | < 0.001 | ✅ Supported |
+Each result leads with its **business magnitude**, then the effect size, then the p-value. Statistical
+and business significance are judged separately (section 7.3).
+
+| # | Hypothesis | Business magnitude | Effect size | Holm p | Statistically significant? | Business significance |
+|---|---|---|---|---:|---|---|
+| H1 | Imports from China rise with wind capacity | 10× the wind capacity, 8.7× the imports | ρ = 0.52, moderate (n = 102) | < 0.001 | ✅ Yes | Large, but mostly country size (H2) |
+| H2 | Wind still matters after controlling for country size | Same size, 10× the wind: 1.6× the imports (95% CI 0.76× to 3.3×) | partial r = 0.13, very weak | 0.26 | ❌ No | Inconclusive: can't rule out an effect that would matter |
+| H3 | Faster wind growth goes with faster import growth (2024) | Median import growth +50% where wind grew most, −11% elsewhere | ρ = 0.25, weak (n = 49) | 0.26 | ❌ No | Would matter if real; one year can't confirm it |
+| H4 | Buyers paid less per kg in 2024 than in 2023 | Median buyer −11% (95% CI −26% to +4%); at fixed volumes −35% | rank-biserial r = −0.29, weak (n = 52) | 0.26 | ❌ No | **Material**: the large buyers got large cuts |
+| H5 | Imports differ by country size | Large countries' median imports are 325× small ones' | ε² = 0.50, large (n = 102) | < 0.001 | ✅ Yes | Material: size is the main demand driver |
 
 **In one sentence:** countries with more wind buy more rare-earth compounds from China *because they
-are bigger economies*, not because of the wind. Demand is highly concentrated, and the headline 30%
-price fall in 2024 mostly reflects **mix**: which buyers bought how much.
+are bigger economies*. At the same size, wind's effect is small and can't be told apart from zero,
+though an effect that matters can't be ruled out either. Demand is highly concentrated, and the 30% fall
+in the average price in 2024 was a **real price fall** for the largest buyers (−35% at fixed volumes),
+not a shift in which buyers bought.
 
 ## 2. Data and quality
 
@@ -45,15 +50,20 @@ price fall in 2024 mostly reflects **mix**: which buyers bought how much.
 
 | Choice | Reason |
 |---|---|
+| **Assumptions checked before each test** | Shapiro-Wilk (normality) and Levene (equal variances, median-centred) decide which test is valid. Findings and consequences: section 7.1 |
 | **Medians, rank (Spearman) correlation** | Every size measure is heavily right-skewed (skew 4–7) |
 | **log10 scale for parametric work** | Raw imports fail Shapiro-Wilk (W = 0.33, p < 10⁻¹⁴); log10 imports pass (W = 0.98, p = 0.62) |
+| **Every correlation is plotted before it is quoted** | A coefficient can hide curves, clusters or a few extreme points (section 5.4) |
 | **Partial correlation and log-log OLS** | To separate wind's effect from country size (a confounder). Coefficients are elasticities |
 | **Clustered standard errors** | The same country appears in 2023 and 2024 |
-| **Wilcoxon signed-rank on log ratios** | Paired before/after comparison without assuming normality; a halving and a doubling weigh equally |
+| **Sign test on paired log price ratios** | Per-buyer price changes are skewed, so neither the paired t-test (needs normality) nor Wilcoxon (needs symmetry) is safe. The sign test only counts rises and falls |
 | **Kruskal-Wallis** | Comparing three groups without assuming normality |
-| **Percentile bootstrap (2,000 resamples)** | Uncertainty for statistics with no standard formula (top-5 share) |
+| **Effect sizes with every test** | ρ and partial r; rank-biserial r (paired change); ε² (Kruskal-Wallis). Elasticities are also given in business terms: "10× x goes with k× y" |
+| **Fixed-basket (Laspeyres) price index** | Separates a real price fall from a shift in which buyers bought (mix) |
+| **Percentile bootstrap (2,000 resamples)** | Uncertainty for statistics with no standard formula (top-5 share, median price change) |
 | **Holm correction, α = 0.05** | Five hypotheses are tested, which keeps the overall false-positive rate at 5% |
-| **Regression diagnostics** | Breusch-Pagan (equal variance), Jarque-Bera (normal residuals), VIF (collinearity) |
+| **Regression diagnostics** | Breusch-Pagan (equal variance, the regression form of Levene), Shapiro-Wilk and Jarque-Bera (normal residuals), VIF (collinearity) |
+| **Business significance judged separately** | Against stated materiality thresholds, not p-values (section 7.3) |
 
 ## 4. Univariate analysis
 
@@ -91,10 +101,28 @@ concentrated (above 1,800). Even the lower end of the interval shows a concentra
 ![Price drop](figures/02_price_drop.png)
 
 In aggregate, China's exports grew **5.7%** in weight but fell **26.4%** in value, so the average price
-fell **30.4%**, from $15.3 to $10.7 per kg. **But the per-buyer test (H4) doesn't confirm a general price
-fall.** For the 52 buyers present in both years, the median price change was −11.0%, and 62% paid less,
-but this isn't statistically significant. The aggregate fall is driven by **mix**: in 2024 more of the
-volume went to buyers and grades with lower unit values.
+fell **30.4%**, from $15.3 to $10.7 per kg.
+
+**Was it a real price fall, or a shift in which buyers bought (mix)?** A fixed-basket price index prices
+each buyer's 2023 volume at 2023 and at 2024 prices:
+
+| Component, 2023 to 2024 | Change |
+|---|---:|
+| Average price per kg | −30.4% |
+| **Price effect** (fixed 2023 volumes; 52 buyers, 99.99% of the volume) | **−34.8%** |
+| Mix effect (shift between buyers) | +6.9% |
+
+- **It's a price fall, not mix.** Mix actually *raised* the average, because more volume went to Japan,
+  which pays more per kg than the US or the Netherlands.
+- **The cut is concentrated in a few large buyers.** 77% of 2023 volume went to buyers whose price fell:
+  Japan −62%, Korea −35%, the Netherlands −31%. The US, the largest buyer, paid 9% less. Japan drives
+  about half of the fall: without it, the fixed-basket fall is 14%.
+- **The typical buyer is a different question** (H4). With all 52 buyers weighted equally, the median
+  change was −11% (95% CI −26% to +4%), which isn't statistically significant. Most buyers are small and
+  their prices are noisy, so the typical buyer's change is uncertain even though the volume-weighted fall
+  is large.
+- **Caveat:** HS 284690 mixes grades, so a lower price per kg can also mean a switch to cheaper grades
+  within a buyer. This data can't separate the two.
 
 ### 5.3 Wind power
 
@@ -104,32 +132,41 @@ In the 60 countries with complete data, wind capacity rose **75%**, from 714 GW 
 (2020–2025). China grew **127%**, from 282 to 641 GW, and now has more than the other 59 combined
 (611 GW).
 
-### 5.4 Pairwise correlations (Spearman, n = 102)
+### 5.4 Pairwise relationships: plots first
 
-| Pair | ρ | p |
-|---|---:|---:|
-| Imports vs wind capacity | 0.52 | < 0.001 |
-| Imports vs total generation (size) | **0.76** | < 0.001 |
-| Wind capacity vs total generation | 0.61 | < 0.001 |
-| Imports vs wind share of generation | 0.00 | 0.99 |
-| 2024 import growth vs wind generation change (n = 49) | 0.25 | 0.09 |
+Every correlation in this report is drawn before it is quoted. The pair plot covers all six measures in
+the correlation matrix (section 6); the scatter below it covers growth.
+
+![Pair plot](figures/08_pairplot.png)
+
+![Growth scatter](figures/10_growth_scatter.png)
+
+| Pair (Spearman) | ρ | Strength | p | What the plot shows |
+|---|---:|---|---:|---|
+| Imports vs wind capacity (n = 102) | 0.52 | moderate | < 0.001 | An upward cloud, with large countries top-right |
+| Imports vs total generation (size) | **0.76** | strong | < 0.001 | A tight upward band |
+| Wind capacity vs total generation | 0.61 | strong | < 0.001 | An upward band: big countries build more wind |
+| Imports vs wind share of generation | 0.00 | none | 0.99 | A shapeless cloud |
+| 2024 import growth vs wind generation change (n = 49) | 0.25 | weak | 0.09 | Imports jump 10× up or down whatever happened to wind |
+
+The pair plot shows the confounding directly. Large countries sit high on imports, wind capacity and
+total generation together. On wind and renewables **shares**, the three size groups overlap, and the
+shares show no pattern against imports. Wind generation and wind capacity are almost the same variable,
+so only capacity is used in the models.
 
 ## 6. Multivariate analysis
 
 ![Correlation matrix](figures/05_correlations.png)
 
-![Pair plot](figures/08_pairplot.png)
-
-The pair plot shows the confounding directly. Large countries sit high on imports, wind capacity and
-total generation together. On wind **share**, the three size groups overlap, and share shows no
-pattern against imports.
+The matrix summarises the same six measures as the pair plot in 5.4, so each coefficient has a scatter
+panel there.
 
 ![Size confound](figures/04_size_confound.png)
 
-| Model (log10 imports, year effect, SEs clustered by country) | Wind elasticity (95% CI) | Size elasticity (95% CI) | R² |
-|---|---|---|---:|
-| A: wind capacity only | **0.94** (0.61 to 1.27), p < 0.001 | | 0.29 |
-| B: wind capacity + total generation | **0.20** (−0.12 to 0.52), p = 0.22 | **1.74** (1.26 to 2.22), p < 0.001 | 0.58 |
+| Model (log10 imports, year effect, SEs clustered by country) | Wind elasticity (95% CI) | Size elasticity (95% CI) | R² | Business reading |
+|---|---|---|---:|---|
+| A: wind capacity only | **0.94** (0.61 to 1.27), p < 0.001 | | 0.29 | 10× the wind, 8.7× the imports |
+| B: wind capacity + total generation | **0.20** (−0.12 to 0.52), p = 0.22 | **1.74** (1.26 to 2.22), p < 0.001 | 0.58 | Same size, 10× the wind: 1.6× the imports (0.76× to 3.3×). 10× the size: 55× the imports |
 
 ![Elasticities](figures/09_elasticities.png)
 
@@ -138,35 +175,80 @@ pattern against imports.
 | Assumption | Test | Value | Verdict |
 |---|---|---:|---|
 | Equal variance of residuals | Breusch-Pagan p | 0.85 | ✅ No heteroskedasticity |
+| Normal residuals | Shapiro-Wilk p | 0.33 | ✅ Normal |
 | Normal residuals | Jarque-Bera p | 0.71 | ✅ Normal |
 | No multicollinearity | max VIF | 1.6 | ✅ Well below 5 |
 
-The model is well specified. Wind and size are correlated, but not so much that their effects can't be
-separated, so wind's insignificance in Model B is a genuine result.
+The model passes every check, so the wide interval for wind isn't caused by a broken model or by
+collinearity. Once size is in the model, this data simply can't pin wind's own effect down: the interval
+includes zero **and** an effect large enough to matter.
 
-## 7. Hypothesis tests: interpretation
+## 7. Hypothesis tests
 
-- **H1 is supported:** imports rise with wind capacity.
-- **H2 is rejected:** the link disappears once country size is held constant (partial r = 0.13).
-  Model B and the coefficient plot show the same thing. Size has an elasticity of about 1.7: a country
-  with 1% more electricity generation imports about 1.7% more.
-- **H3 isn't supported:** countries that added more wind generation in 2024 didn't increase imports
-  significantly more. The window is a single year.
-- **H4 isn't supported per buyer**, which corrects the aggregate picture: see 5.2.
-- **H5 is strongly supported:** median imports are 705 kg for small countries, 5,040 kg for medium
-  ones and 229,432 kg for large ones.
+### 7.1 Assumption checks: what was found and what it changed
+
+| Hypothesis and test | Assumption | Finding | Consequence |
+|---|---|---|---|
+| H1, H3: Spearman correlation | A monotonic relationship (no normality needed) | The scatters in 5.4 show straight-line or shapeless patterns, with no curve hiding a relationship | Spearman is appropriate |
+| H2: partial correlation on log10 | Normal residuals | Imports residual normal (Shapiro-Wilk p = 0.16); wind residual **not** normal (p < 0.001, skew −0.8) | Checked with a rank-based partial correlation: r = 0.12, p = 0.24, the same conclusion. Model B's residuals are normal |
+| H4: paired price change | Paired t-test: normal changes. Wilcoxon: symmetric changes | Log price changes are **not normal** (Shapiro-Wilk p < 0.001) and **skewed** (−1.5): a few buyers had very large falls | Neither test is safe, so H4 uses the **sign test** (p = 0.13). A paired t-test would have given p = 0.045, a false "significant"; Wilcoxon gives 0.07 |
+| H5: Kruskal-Wallis across size groups | Similar spread in each group | Raw kg: not normal in any group (Shapiro-Wilk p < 0.001), and **unequal variances** (Levene p = 0.008). Log10 kg: **equal variances** (Levene p = 0.51); normal in the small and medium groups, borderline in the large group (p = 0.04) | Kruskal-Wallis needs no normality, and with equal spreads on the log scale its result reads as a shift in typical imports between groups |
+| Model B (OLS) | Equal variance, normal residuals, no collinearity | All pass (section 6) | Clustered-SE OLS is a sound baseline |
+
+### 7.2 Effect sizes
+
+| # | Effect size | Size | Business magnitude |
+|---|---|---|---|
+| H1 | Spearman ρ = 0.52 | moderate | 10× the wind capacity, 8.7× the imports |
+| H2 | partial r = 0.13 | very weak | Same size, 10× the wind: 1.6× the imports (0.76× to 3.3×) |
+| H3 | Spearman ρ = 0.25 | weak | Median import growth +50% where wind grew most, −11% elsewhere |
+| H4 | rank-biserial r = −0.29 (62% of buyers paid less) | weak | Median buyer −11% (−26% to +4%); at fixed volumes −35% |
+| H5 | ε² = 0.50 | large | Large countries' median imports 229 t, medium 5.0 t, small 0.7 t (325×) |
+
+Conventions: ρ, r and rank-biserial r are called weak from 0.2, moderate from 0.4, strong from 0.6;
+ε² is small from 0.01, medium from 0.08, large from 0.26.
+
+### 7.3 Statistical significance is not business significance
+
+A p-value only says whether an effect can be told apart from zero with this much data. Whether it
+**matters** depends on how large it is. The materiality thresholds below are the analyst's judgement,
+stated so they can be challenged:
+- **Prices:** a change of **5% or more** in the price per kg is material for a buyer's budget or contract.
+- **Demand drivers:** a driver is material for forecasting if 10× the driver goes with at least
+  **2× the imports** (an elasticity of 0.3 or more).
+
+| | Statistically significant? (Holm p) | Business significance |
+|---|---|---|
+| **H1** | Yes (< 0.001) | Large (8.7× per 10× wind), but **misleading on its own**: it is mostly country size |
+| **H2** | No (0.26) | **Inconclusive.** The estimate (1.6×) is below the 2× threshold, but the interval reaches 3.3×. Not evidence that wind doesn't matter |
+| **H3** | No (0.26) | **Would matter if real** (+50% vs −11%), but one year and 49 countries can't confirm it. Retest with more years |
+| **H4** | No (0.26) | **Material.** The 35% fixed-basket fall is measured on China's whole export trade, not estimated from a sample. What isn't established is a cut for the *typical*, mostly small, buyer |
+| **H5** | Yes (< 0.001) | **Material:** size is the main demand driver |
+
+### 7.4 Interpretation
+
+- **H1 and H5 are supported, with large effects.** Imports rise with wind capacity, and much more with
+  country size.
+- **H2 isn't supported, but that doesn't make wind irrelevant.** At the same size, wind's estimated
+  effect shrinks from 0.94 to 0.20 and can't be told apart from zero; the data still allow an effect up
+  to 0.52, which would matter.
+- **H3 isn't supported.** Countries that added more wind in 2024 grew imports more in the median, but
+  the variation is so large that one year can't confirm it.
+- **H4 isn't supported for the typical buyer**, yet the price fall was real and large where the volume
+  is (5.2). Not significant isn't the same as not important.
 
 ## 8. Business insights
 
 1. **Supply risk is concentrated in a few buyers.** The US, Japan and the Netherlands take most of
    China's exports and would feel any export restriction first. Diversifying suppliers and holding
    strategic stocks matters most for them.
-2. **Don't read the 2024 "price crash" as a uniform discount.** The aggregate unit value fell 30%, but
-   the typical buyer's price fell only about 11%, and not significantly. Contracts and budgets should
-   be benchmarked per buyer or per grade, not against an average skewed by mix.
+2. **The 2024 price fall was real, and the big buyers got it.** At fixed volumes, China's export price
+   fell 35%, led by Japan (−62%), Korea (−35%) and the Netherlands (−31%); the US paid 9% less. Buyers
+   who didn't see a cut should benchmark against these, per grade where possible. For the typical small
+   buyer the change is uncertain (−11%, with a range from −26% to +4%).
 3. **Forecast compound demand from economic size, not wind targets.** Size explains imports far better
-   than wind capacity. Wind's rare-earth demand probably arrives as **finished permanent magnets**, a
-   different product code.
+   than wind capacity. Wind's own effect is small and uncertain in this data, not proven to be zero. Its
+   rare-earth demand probably arrives as **finished permanent magnets**, a different product code.
 4. **China's own wind boom is a supply signal to watch.** Its capacity more than doubled, so more of
    its output may be used at home. This is a hypothesis to test in the next stage.
 
@@ -174,22 +256,25 @@ separated, so wind's insignificance in Model B is a genuine result.
 
 | # | Evidence | Modeling decision |
 |---|---|---|
-| 1 | Skew 4–7; log values normal | Model **log** quantities; report elasticities |
-| 2 | H2 rejected; size elasticity 1.7 | **Always control for size** (total generation; add GDP or industry if available) |
+| 1 | Skew 4–7; log values normal, with equal variances across size groups (Levene) | Model **log** quantities; report elasticities |
+| 2 | H2 not supported; size elasticity 1.7 | **Always control for size** (total generation; add GDP or industry if available) |
 | 3 | Wind share unrelated to imports | Use absolute capacity or **capacity additions**, not shares |
 | 4 | Growth explodes from small bases | Model growth as a **log ratio**, or set a minimum base |
 | 5 | Imports only for 2023–2024 | **Complete `data1.xlsx`** (exports for every year) before panel or forecasting models |
-| 6 | Aggregate price is mostly mix (H4) | Model prices per buyer, or decompose price vs mix |
+| 6 | The 2024 price fall is a within-buyer fall (−35% at fixed volumes), led by Japan; per-buyer changes are skewed | Model prices per buyer or grade; decompose price vs mix; check robustness without Japan; use sign or rank tests for price changes |
 | 7 | Top five buyers hold 83% | Robustness check **without the US and Japan** |
-| 8 | Model B passes all diagnostics | Log-log OLS with clustered SEs is a sound **baseline**; compare against it |
+| 8 | Model B passes Breusch-Pagan, Shapiro-Wilk, Jarque-Bera and VIF | Log-log OLS with clustered SEs is a sound **baseline**; compare against it |
 | 9 | Magnets aren't in HS 284690 | Add **permanent magnets (HS 850511)** to test the wind hypothesis where it should appear |
+| 10 | H2 and H3 aren't significant, but can't rule out effects that would matter | Get more years before concluding "no effect"; report intervals and business magnitudes, not just p-values |
 
 ## 10. Limitations
 
 - **Short window.** Imports from China cover two years; growth tests use one.
 - **One product code.** Rare-earth metals and magnets are outside HS 284690.
+- **Grades within the code.** A lower price per kg can mean a cheaper grade rather than a discount.
 - **Directions in different years.** Comparing Export with Import rows also compares years.
 - **Observational data.** Results are associations, not causal effects.
+- **Materiality thresholds are judgement calls.** They are stated in 7.3 so a reader can apply their own.
 - **Unmatched partners.** "Other Asia, nes" (usually Taiwan in UN Comtrade reporting), a top-5 buyer,
   has no electricity data and is excluded from the multivariate analysis. So are Peru, Venezuela and
   a few others.
@@ -213,6 +298,8 @@ by `notebooks/02_eda_analysis.ipynb`.
   target ≥ 8). Diverging charts use blue ↔ red with a neutral gray midpoint, and every heatmap
   cell and bar is also labelled with its signed value.
 - **No dual axes:** measures with different scales get separate panels.
+- **Every correlation has a scatter:** the pair plot (08) covers every pair in the heatmap (05), the
+  growth scatter (10) covers H3, and the size-confound scatter (04) covers H1 and H2.
 
 **Chart type matched to the analytical question**
 
@@ -225,8 +312,9 @@ by `notebooks/02_eda_analysis.ipynb`.
 | [05_correlations](figures/05_correlations.png) | How do all the variables relate to one another? | **Correlation heatmap (lower triangle)**: each pair once, with a diverging scale and printed values | Seaborn |
 | [06_distribution](figures/06_distribution.png) | What does the distribution of imports look like? | **Histogram on a log axis**: shape and skew of one variable spanning six orders of magnitude | Seaborn |
 | [07_unit_values](figures/07_unit_values.png) | How much do prices vary, by direction? | **Strip plot with medians**: every observation visible for a modest n; log scale for spread | Seaborn |
-| [08_pairplot](figures/08_pairplot.png) | Which variables move together, and where does size sit? | **Pair plot by group**: all pairwise relationships plus each variable's distribution at once | Seaborn |
+| [08_pairplot](figures/08_pairplot.png) | What does each correlation look like, and where does size sit? | **Pair plot by group**: a scatter for every pair of the six measures in the heatmap, plus each one's distribution | Seaborn |
 | [09_elasticities](figures/09_elasticities.png) | How much does wind's estimated effect change once size is added? | **Coefficient (dot-and-interval) plot**: estimates with 95% CIs against a zero line | Matplotlib |
+| [10_growth_scatter](figures/10_growth_scatter.png) | Did countries that added more wind import more (H3)? | **Scatter on log / symmetric-log axes**: growth ratios span 0.06× to 200×, and wind changes can be negative | Matplotlib |
 
 Reproduce: build the database (`uv run python scripts/run_pipeline.py`), then
 `uv run jupyter nbconvert --to notebook --execute --inplace notebooks/02_eda_analysis.ipynb`.
