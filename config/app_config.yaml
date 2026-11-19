@@ -1,9 +1,19 @@
 # Application settings for the ETL pipeline (scripts/run_pipeline.py)
 pipeline:
-  raw_dir: data/raw
+  raw_dir: data/raw              # real data, never committed (see docs/setup.md)
   sources:
-    trade: data1.xlsx          # China rare-earth trade by partner (HS 284690)
-    electricity: data2.xlsx    # Electricity generation by country and source
+    trade: data1.xlsx            # China rare-earth trade by partner (HS 284690)
+    electricity: data2.xlsx      # Electricity generation by country and source
+  report: docs/quality_report.md
+  rejected_dir: data/interim     # rejected rows saved here as rejected_<table>.csv
+  max_rejected_pct: 5            # stop the run if more than this % of a table is rejected
+
+# Used with --sample: committed synthetic data, separate database and report
+sample:
+  raw_dir: data/sample
+  database_url: sqlite:///data/processed/rare_earth_sample.db
+  report: docs/quality_report_sample.md
+  rejected_dir: data/interim/sample
 
 logging:
   level: INFO

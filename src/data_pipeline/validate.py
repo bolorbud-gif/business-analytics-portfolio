@@ -1,12 +1,15 @@
 """Validate stage: Pandera schemas that every table must pass before loading."""
 
 import logging
+from collections import Counter
+from pathlib import Path
 
 import pandas as pd
 import pandera.pandas as pa
 from pandera.errors import SchemaErrors
 
 from src.data_pipeline import PipelineError
+from src.data_pipeline.quality import QualityReport, missing_counts
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +78,12 @@ electricity_schema = pa.DataFrameSchema(
 
 partner_trade_energy_schema = pa.DataFrameSchema(
     {
+        "reporter": pa.Column(str, pa.Check.isin(["China"])),
+        "trade_flow": pa.Column(str, pa.Check.isin(["Export", "Import"])),
+        "product_code": pa.Column(str, pa.Check.str_matches(r"^\d{6}$")),
+        "year": pa.Column(int, YEAR_RANGE),
         "partner": pa.Column(str),
         "country": pa.Column(str),
-        "year": pa.Column(int, YEAR_RANGE),
-        "trade_flow": pa.Column(str, pa.Check.isin(["Export", "Import"])),
         "trade_value_kusd": pa.Column(float, NON_NEGATIVE),
         "quantity_kg": pa.Column(float, NON_NEGATIVE),
         "unit_value_usd_per_kg": pa.Column(float, NON_NEGATIVE, nullable=True),
@@ -87,7 +92,7 @@ partner_trade_energy_schema = pa.DataFrameSchema(
         "renewables_twh": pa.Column(float, NON_NEGATIVE, nullable=True),
         "renewables_share_pct": pa.Column(float, pa.Check.in_range(0, 100.5), nullable=True),
     },
-    unique=["partner", "year", "trade_flow"],
+    unique=["reporter", "trade_flow", "product_code", "year", "partner"],
     strict=True,
     coerce=True,
     name="partner_trade_energy",
@@ -100,26 +105,81 @@ SCHEMAS = {
 }
 
 
-def validate_table(name: str, df: pd.DataFrame) -> pd.DataFrame:
-    """Validate one table. Collects every failure, logs them, then raises PipelineError."""
+def _reason(row) -> str:
+    """Readable rejection reason. Table-wide checks are reported once per column by
+    Pandera, so they are labelled by the check only."""
+    check = str(row["check"])
+    if check.startswith("multiple_fields_uniqueness"):
+        return "duplicate key with conflicting values"
+    if row["schema_context"] == "DataFrameSchema" or not isinstance(row["column"], str):
+        return check
+    return f"{row['column']}: {check}"
+
+
+def validate_table(
+    name: str,
+    df: pd.DataFrame,
+    report: QualityReport | None = None,
+    rejected_dir: Path | None = None,
+    max_rejected_pct: float = 5.0,
+) -> pd.DataFrame:
+    """Validate one table and return only the rows that pass.
+
+    - Exact duplicate rows: first copy kept, the rest dropped.
+    - Rows failing any rule: rejected, saved with the reason to
+      <rejected_dir>/rejected_<name>.csv, and not loaded.
+    - Structural problems (missing columns) or a rejected share above
+      max_rejected_pct stop the run with PipelineError.
+    """
+    quality = report.table(name) if report else None
+    rows_in = len(df)
+    df = df.drop_duplicates().reset_index(drop=True)
+    duplicates = rows_in - len(df)
+    if duplicates:
+        logger.warning("%s: dropped %s exact duplicate row(s)", name, duplicates)
+
+    schema = SCHEMAS[name]
+    reasons: Counter = Counter()
     try:
-        validated = SCHEMAS[name].validate(df, lazy=True)
+        valid = schema.validate(df, lazy=True)
+        rejected = df.iloc[0:0]
     except SchemaErrors as exc:
         cases = exc.failure_cases
-        logger.error("Validation failed for %s: %s problem(s)", name, len(cases))
-        for _, row in cases.head(20).iterrows():
-            logger.error(
-                "  column=%s check=%s value=%s row=%s",
-                row["column"], row["check"], row["failure_case"], row["index"],
-            )
-        raise PipelineError(f"Validation failed for table {name!r}; see log for details") from exc
-    logger.info("Validated %s: %s rows passed all checks", name, len(validated))
-    return validated
+        structural = cases[cases["index"].isna()]
+        if not structural.empty:
+            problems = "; ".join(_reason(r) for _, r in structural.iterrows())
+            raise PipelineError(f"{name}: table structure is invalid: {problems}") from exc
 
+        cases = cases.assign(index=cases["index"].astype(int), reason=cases.apply(_reason, axis=1))
+        row_reasons = cases.groupby("index")["reason"].apply(lambda r: "; ".join(sorted(set(r))))
+        reasons = Counter(cases.drop_duplicates(["index", "reason"])["reason"])
+        rejected = df.loc[row_reasons.index].assign(rejection_reason=row_reasons.values)
+        valid = schema.validate(df.drop(index=row_reasons.index))
+        for reason, n in sorted(reasons.items()):
+            logger.warning("%s: rejected %s row(s): %s", name, n, reason)
 
-def validate(tables: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
-    """Validate every table, plus cross-table checks."""
-    validated = {name: validate_table(name, df) for name, df in tables.items()}
-    if len(validated["partner_trade_energy"]) != len(validated["trade_flows"]):
-        raise PipelineError("partner_trade_energy row count differs from trade_flows (bad join)")
-    return validated
+    rejected_pct = len(rejected) / len(df) * 100 if len(df) else 0.0
+    if rejected_dir is not None:
+        path = Path(rejected_dir) / f"rejected_{name}.csv"
+        if len(rejected):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            rejected.to_csv(path, index=False)
+            logger.warning("%s: %s rejected row(s) saved to %s", name, len(rejected), path)
+        elif path.exists():
+            path.unlink()  # no stale rejects from an earlier run
+
+    if quality:
+        quality.duplicates_dropped = duplicates
+        quality.rejected_by_reason = reasons
+        quality.rows_rejected = len(rejected)
+        quality.rows_valid = len(valid)
+        quality.missing = missing_counts(valid)
+
+    if rejected_pct > max_rejected_pct:
+        raise PipelineError(
+            f"{name}: {len(rejected)} of {len(df)} rows rejected ({rejected_pct:.1f}%), above the "
+            f"{max_rejected_pct}% limit. Nothing was loaded; check the rejected rows file."
+        )
+    logger.info("Validated %s: %s rows passed, %s rejected, %s duplicates dropped",
+                name, len(valid), len(rejected), duplicates)
+    return valid

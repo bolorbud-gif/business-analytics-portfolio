@@ -5,6 +5,7 @@ import logging
 import pandas as pd
 
 from src.data_pipeline import PipelineError
+from src.data_pipeline.quality import QualityReport
 
 logger = logging.getLogger(__name__)
 
@@ -60,13 +61,16 @@ def _require_columns(df: pd.DataFrame, columns, name: str) -> None:
         raise PipelineError(f"{name} data is missing expected columns: {missing}")
 
 
-def transform_trade(raw: pd.DataFrame) -> pd.DataFrame:
+def transform_trade(raw: pd.DataFrame, report: QualityReport | None = None) -> pd.DataFrame:
     """Clean the rare-earth trade table.
 
     In the source file the reporter column's header and one of its cells are
     swapped: the header reads "China" and one row reads "Reporter". We rename the
     column to `reporter` and put the header value back into that row.
     """
+    quality = report.table("trade_flows", "data1.xlsx") if report else None
+    if quality:
+        quality.rows_in = len(raw)
     df = raw.copy()
     first_col = df.columns[0]
     df = df.rename(columns={first_col: "reporter"})
@@ -78,6 +82,12 @@ def transform_trade(raw: pd.DataFrame) -> pd.DataFrame:
                 int(swapped.sum()), first_col,
             )
             df.loc[swapped, "reporter"] = first_col
+            if quality:
+                quality.rows_repaired += int(swapped.sum())
+                quality.repairs.append(
+                    f"{int(swapped.sum())} row(s) had reporter 'Reporter' (header/cell swap); "
+                    f"set to {first_col!r}"
+                )
 
     _require_columns(df, TRADE_COLUMNS, "Trade")
     df = df.rename(columns=TRADE_COLUMNS)
@@ -87,8 +97,10 @@ def transform_trade(raw: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def transform_electricity(raw: pd.DataFrame) -> pd.DataFrame:
+def transform_electricity(raw: pd.DataFrame, report: QualityReport | None = None) -> pd.DataFrame:
     """Rename electricity columns to snake_case."""
+    if report:
+        report.table("electricity_generation", "data2.xlsx").rows_in = len(raw)
     _require_columns(raw, ELECTRICITY_COLUMNS, "Electricity")
     df = raw.rename(columns=ELECTRICITY_COLUMNS)[list(ELECTRICITY_COLUMNS.values())]
     df["is_aggregated"] = df["is_aggregated"].astype(bool)
@@ -96,8 +108,10 @@ def transform_electricity(raw: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_partner_trade_energy(trade: pd.DataFrame, electricity: pd.DataFrame) -> pd.DataFrame:
-    """One row per partner, year and trade flow, joined with the partner's power mix.
+def build_partner_trade_energy(
+    trade: pd.DataFrame, electricity: pd.DataFrame, report: QualityReport | None = None
+) -> pd.DataFrame:
+    """One row per trade_flows row, joined with the partner's power mix that year.
 
     Adds unit value (USD per kg) and the partner's total, wind+solar and renewable
     generation for the same year. Partners with no electricity data keep NaN.
@@ -120,22 +134,19 @@ def build_partner_trade_energy(trade: pd.DataFrame, electricity: pd.DataFrame) -
     unmatched = sorted(out.loc[out["total_generation_twh"].isna(), "partner"].unique())
     if unmatched:
         logger.warning("No electricity data for %s partner(s): %s", len(unmatched), unmatched)
+    if report:
+        report.table("partner_trade_energy", "derived").rows_in = len(out)
+        rows = int(out["total_generation_twh"].isna().sum())
+        if unmatched:
+            report.notes.append(
+                f"{rows} partner_trade_energy row(s) have NULL electricity fields: no electricity "
+                f"data for {len(unmatched)} partner(s) in those years: {', '.join(unmatched)}."
+            )
 
     columns = [
-        "partner", "country", "year", "trade_flow", "trade_value_kusd", "quantity_kg",
-        "unit_value_usd_per_kg", "total_generation_twh", "wind_solar_twh",
-        "renewables_twh", "renewables_share_pct",
+        "reporter", "trade_flow", "product_code", "year", "partner", "country",
+        "trade_value_kusd", "quantity_kg", "unit_value_usd_per_kg",
+        "total_generation_twh", "wind_solar_twh", "renewables_twh", "renewables_share_pct",
     ]
     logger.info("Built partner_trade_energy: %s rows", len(out))
     return out[columns]
-
-
-def transform(raw: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
-    """Run all transforms. Returns {table name: clean DataFrame}."""
-    trade = transform_trade(raw["trade"])
-    electricity = transform_electricity(raw["electricity"])
-    return {
-        "trade_flows": trade,
-        "electricity_generation": electricity,
-        "partner_trade_energy": build_partner_trade_energy(trade, electricity),
-    }

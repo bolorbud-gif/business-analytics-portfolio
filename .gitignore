@@ -36,9 +36,11 @@ venv.bak/
 data/raw/*
 data/interim/*
 data/processed/*
+data/external/*
 !data/raw/.gitkeep
 !data/interim/.gitkeep
 !data/processed/.gitkeep
+!data/external/.gitkeep
 
 # Configuration with secrets
 config/secrets.yaml
