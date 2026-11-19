@@ -29,6 +29,10 @@ though an effect that matters can't be ruled out either. Demand is highly concen
 in the average price in 2024 was a **real price fall** for the largest buyers (−35% at fixed volumes),
 not a shift in which buyers bought.
 
+**Regression check.** Re-testing every hypothesis as a log-log OLS regression gives the same verdicts
+(7.5). The main model's conclusion also holds without the 16 partners that bought in only one of the two
+years, and in a Poisson (PPML) model that counts their missing years as zero (section 6).
+
 ## 2. Data and quality
 
 - **All 19 data-quality checks pass.** `check_database()` runs them against the database itself:
@@ -44,7 +48,8 @@ not a shift in which buyers bought.
 
   So **imports from China** exist for 2023–2024 only, and their growth for 2024 only.
 - **Analysis sample:** the 102 country-years with imports, wind capacity and total generation all
-  recorded and positive. They're split into size terciles by total electricity generation.
+  recorded and positive. They're split into size terciles by total electricity generation, and
+  described in Table 1 (section 4).
 
 ## 3. Methods
 
@@ -54,7 +59,11 @@ not a shift in which buyers bought.
 | **Medians, rank (Spearman) correlation** | Every size measure is heavily right-skewed (skew 4–7) |
 | **log10 scale for parametric work** | Raw imports fail Shapiro-Wilk (W = 0.33, p < 10⁻¹⁴); log10 imports pass (W = 0.98, p = 0.62) |
 | **Every correlation is plotted before it is quoted** | A coefficient can hide curves, clusters or a few extreme points (section 5.4) |
+| **Table 1 for the regression sample** | Describes the exact data the models use, on the raw and the log10 scale (section 4) |
 | **Partial correlation and log-log OLS** | To separate wind's effect from country size (a confounder). Coefficients are elasticities |
+| **Regression check of every hypothesis** | Log-log OLS (H1, H2, H5), OLS in log changes (H3: compares each country with itself) and the mean log price change (H4), each with a residual check (7.5) |
+| **PPML (Poisson pseudo-maximum likelihood)** | The standard model for trade flows. It keeps the country-years with no recorded imports (as 0 kg), which a log model has to drop |
+| **Balanced-sample re-estimate** | Checks that the partners that bought in only one of the two years don't drive the result |
 | **Clustered standard errors** | The same country appears in 2023 and 2024 |
 | **Sign test on paired log price ratios** | Per-buyer price changes are skewed, so neither the paired t-test (needs normality) nor Wilcoxon (needs symmetry) is safe. The sign test only counts rises and falls |
 | **Kruskal-Wallis** | Comparing three groups without assuming normality |
@@ -85,6 +94,38 @@ not a shift in which buyers bought.
   HS 284690 mixes cheap oxides with costly separated elements, so **kg is the better demand measure**.
 
 ![Unit values](figures/07_unit_values.png)
+
+### Table 1: descriptive statistics of the regression sample
+
+The table above covers every country in 2024. The models use the **regression sample**: 102
+country-years from 58 countries (51 in 2023, 51 in 2024), with imports, wind capacity and total
+generation all recorded and positive.
+
+| Variable | Mean | SD | Min | Median | Max | Skew | Shapiro-Wilk p |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Imports from China (kg) | 591,606 | 1,968,169 | 2 | 5,254 | 12,517,000 | 4.6 | < 0.001 |
+| log10 imports | 3.94 | 1.57 | 0.30 | 3.72 | 7.10 | 0.03 | **0.16** |
+| Wind capacity (GW) | 11.0 | 23.9 | 0.03 | 3.3 | 152.7 | 4.3 | < 0.001 |
+| log10 wind capacity | 0.34 | 0.89 | −1.52 | 0.51 | 2.18 | −0.17 | 0.04 |
+| Total generation, i.e. country size (TWh) | 347 | 665 | 4.5 | 152 | 4,391 | 4.6 | < 0.001 |
+| log10 total generation | 2.14 | 0.62 | 0.66 | 2.18 | 3.64 | −0.23 | **0.22** |
+| Wind share of generation (%) | 9.0 | 9.7 | 0.0 | 5.9 | 57.2 | 1.8 | < 0.001 |
+
+| Correlation of log10 values (Pearson) | Wind capacity | Total generation |
+|---|---:|---:|
+| Imports from China | 0.53 | **0.76** |
+| Wind capacity | | 0.61 |
+
+**What Table 1 shows, and how it shapes the analysis**
+1. **The raw variables are extremely skewed** (skew 4–5). The mean of imports is over 100 times the
+   median, because a few very large buyers pull it up, so the data are described with **medians**.
+2. **Logs remove the skew, which justifies log-log OLS.** On the log10 scale every skew is close to 0,
+   and imports and size pass Shapiro-Wilk. Log wind capacity fails narrowly (p = 0.04). That doesn't
+   matter for OLS, which needs normal **residuals**, not normal predictors, and Model B's residuals are
+   normal (section 6).
+3. **The correlations show the confounding before any test.** Size is more closely linked to imports
+   (0.76) than wind is (0.53), and wind and size are linked to each other (0.61). So wind's own effect
+   can only be judged with size held fixed (H2). Each pair has a scatter in the pair plot (5.4).
 
 ## 5. Bivariate analysis
 
@@ -183,6 +224,46 @@ The model passes every check, so the wide interval for wind isn't caused by a br
 collinearity. Once size is in the model, this data simply can't pin wind's own effect down: the interval
 includes zero **and** an effect large enough to matter.
 
+### Missing years: do they change the result?
+
+A pooled regression doesn't need every country in every year. Each country-year is one row, and the
+clustered standard errors allow for countries that appear once or twice. But a year with no recorded
+imports can't be logged, so it drops out, and the model then describes how much countries buy *given
+that they buy*.
+
+| China's partners, 2023–2024 | Count |
+|---|---:|
+| Bought in both years | 52 |
+| Bought in 2023 only | 8 |
+| Bought in 2024 only | 8 |
+| Bought in neither year | 4 |
+
+A missing year is blank, never recorded as 0. The partners that skip a year are **small, occasional
+buyers**: their typical recorded imports are 212 kg, against 15,892 kg for partners that buy every year
+(Kruskal-Wallis p < 0.001). Bulgaria bought 2 kg, El Salvador 5 kg and Denmark 20 kg. So the gaps
+aren't random. A blank most likely means China recorded no shipment that year, but the data can't
+confirm a true zero. Model B was therefore re-estimated two more ways:
+
+| Model B, re-estimated | n | Wind elasticity (95% CI) | Size elasticity (95% CI) |
+|---|---:|---|---|
+| All buyers, log-log OLS (baseline) | 102 | 0.20 (−0.12 to 0.52), p = 0.22 | 1.74 (1.26 to 2.22), p < 0.001 |
+| Only buyers in both years | 88 | 0.15 (−0.15 to 0.46), p = 0.33 | 2.03 (1.47 to 2.59), p < 0.001 |
+| PPML, missing years counted as 0 kg | 116 | 0.14 (−0.33 to 0.60), p = 0.57 | 1.05 (0.18 to 1.93), p = 0.02 |
+
+**The conclusion doesn't depend on how the missing years are handled.** Wind stays small and not
+significant, and size stays large and significant. PPML's size elasticity is lower because it gives more
+weight to the largest importers, while the log model weights every country equally.
+
+### Models the data can't support yet
+
+- **Country fixed effects** use only each country's change over time. Over two years almost none of the
+  variation is within a country: 0.1% for wind capacity, under 0.1% for size and 4.5% for imports. A
+  fixed-effects estimate would rest on almost no information.
+- **ARIMA** forecasts one country's series from its own past. It needs a long, evenly spaced series
+  (around 50 points as a rule of thumb). Each country has at most two annual points, and the small buyers
+  have gaps. **Monthly** trade data for 2020–2025 (72 points) would make it possible for the large,
+  steady buyers.
+
 ## 7. Hypothesis tests
 
 ### 7.1 Assumption checks: what was found and what it changed
@@ -194,6 +275,7 @@ includes zero **and** an effect large enough to matter.
 | H4: paired price change | Paired t-test: normal changes. Wilcoxon: symmetric changes | Log price changes are **not normal** (Shapiro-Wilk p < 0.001) and **skewed** (−1.5): a few buyers had very large falls | Neither test is safe, so H4 uses the **sign test** (p = 0.13). A paired t-test would have given p = 0.045, a false "significant"; Wilcoxon gives 0.07 |
 | H5: Kruskal-Wallis across size groups | Similar spread in each group | Raw kg: not normal in any group (Shapiro-Wilk p < 0.001), and **unequal variances** (Levene p = 0.008). Log10 kg: **equal variances** (Levene p = 0.51); normal in the small and medium groups, borderline in the large group (p = 0.04) | Kruskal-Wallis needs no normality, and with equal spreads on the log scale its result reads as a shift in typical imports between groups |
 | Model B (OLS) | Equal variance, normal residuals, no collinearity | All pass (section 6) | Clustered-SE OLS is a sound baseline |
+| Regression check (7.5) | Normal residuals | H1, H2, H3 and H5 pass; H4's residuals are **not** normal (p < 0.001) | H4's regression p-value isn't used |
 
 ### 7.2 Effect sizes
 
@@ -237,6 +319,35 @@ stated so they can be challenged:
 - **H4 isn't supported for the typical buyer**, yet the price fall was real and large where the volume
   is (5.2). Not significant isn't the same as not important.
 
+### 7.5 Regression check: each hypothesis as a log-log OLS
+
+Each hypothesis was re-tested as a regression, with its residuals checked. H1, H2 and H5 come from
+Models A and B (section 6). H3 becomes a regression in **changes** (log of 2024 / 2023), which compares
+each country with itself. H4 becomes the mean log price change. Plot first:
+
+![Growth elasticity](figures/11_growth_elasticity.png)
+
+| # | Regression | Business magnitude | Estimate | p | Holm p | Residuals normal? (Shapiro-Wilk p) | Regression verdict | Main test (7.3) |
+|---|---|---|---:|---:|---:|---|---|---|
+| H1 | Log-log OLS, wind only (Model A), n = 102 | 10× the wind, 8.7× the imports (4.1× to 18.6×) | 0.94 | < 0.001 | < 0.001 | ✅ 0.44 | Supported | Supported |
+| H2 | Log-log OLS, wind + size (Model B), n = 102 | Same size, 10× the wind: 1.6× the imports (0.76× to 3.3×) | 0.20 | 0.22 | 0.44 | ✅ 0.33 | Not supported | Not supported |
+| H3 | OLS in log changes, 2023→2024, size growth controlled, n = 46 | Doubling wind output: 0.96× the import growth (0.06× to 14×) | −0.07 | 0.97 | 0.97 | ✅ 0.08 | Not supported | Not supported |
+| H4 | OLS of the log price change on a constant (= paired t-test), n = 52 | Mean buyer −31% (−52% to −2%) | −0.37 | 0.04 | 0.12 | ❌ < 0.001 | **Not valid** | Not supported (sign test) |
+| H5 | Log-log OLS, wind + size (Model B), n = 102 | Same wind, 10× the size: 55× the imports (18× to 167×) | 1.74 | < 0.001 | < 0.001 | ✅ 0.33 | Supported | Supported |
+
+**The regressions agree with the main tests on every hypothesis.**
+- **H1 and H5 are supported**, with normal residuals, and survive the Holm correction.
+- **H2 isn't supported** (Holm p = 0.44): at the same size, wind's elasticity is 0.20.
+- **H3 isn't supported.** In growth terms, wind growth predicts nothing (elasticity −0.07), and the
+  interval is so wide that the data can't tell. The main Spearman test (section 1) used the change in TWh, which is
+  larger for big countries, so its weak positive link probably reflects size.
+- **H4 shouldn't be judged by OLS.** Its p = 0.04 looks significant, but the residuals are far from
+  normal: this is the paired t-test that 7.1 rejected. It isn't significant after the Holm correction
+  anyway, and the sign test stays the right test.
+
+A regression can't *prove* a hypothesis. It shows how unlikely the data would be if there were no
+relationship, and with two years of observational data that is an association, not a causal effect.
+
 ## 8. Business insights
 
 1. **Supply risk is concentrated in a few buyers.** The US, Japan and the Netherlands take most of
@@ -260,16 +371,21 @@ stated so they can be challenged:
 | 2 | H2 not supported; size elasticity 1.7 | **Always control for size** (total generation; add GDP or industry if available) |
 | 3 | Wind share unrelated to imports | Use absolute capacity or **capacity additions**, not shares |
 | 4 | Growth explodes from small bases | Model growth as a **log ratio**, or set a minimum base |
-| 5 | Imports only for 2023–2024 | **Complete `data1.xlsx`** (exports for every year) before panel or forecasting models |
+| 5 | Imports only for 2023–2024 | **Complete `data1.xlsx`** (exports for every year) before panel or forecasting models. Country fixed effects need more years; ARIMA needs a long series, i.e. **monthly** data |
 | 6 | The 2024 price fall is a within-buyer fall (−35% at fixed volumes), led by Japan; per-buyer changes are skewed | Model prices per buyer or grade; decompose price vs mix; check robustness without Japan; use sign or rank tests for price changes |
 | 7 | Top five buyers hold 83% | Robustness check **without the US and Japan** |
 | 8 | Model B passes Breusch-Pagan, Shapiro-Wilk, Jarque-Bera and VIF | Log-log OLS with clustered SEs is a sound **baseline**; compare against it |
 | 9 | Magnets aren't in HS 284690 | Add **permanent magnets (HS 850511)** to test the wind hypothesis where it should appear |
 | 10 | H2 and H3 aren't significant, but can't rule out effects that would matter | Get more years before concluding "no effect"; report intervals and business magnitudes, not just p-values |
+| 11 | 16 partners bought in only one of the two years; they are tiny buyers | Pooled OLS handles the gaps; re-estimate without them and with **PPML** (missing = 0). Both give the same conclusion |
+| 12 | Every hypothesis re-tested as a regression gives the same verdict (7.5) | Use **log-log OLS** as the baseline model; keep sign or rank tests for skewed price changes |
 
 ## 10. Limitations
 
 - **Short window.** Imports from China cover two years; growth tests use one.
+- **Unbalanced sample.** 16 partners bought in only one of the two years, and a missing year can't be
+  told apart from a true zero. They are tiny buyers, and the results hold without them and with them
+  counted as zero (section 6).
 - **One product code.** Rare-earth metals and magnets are outside HS 284690.
 - **Grades within the code.** A lower price per kg can mean a cheaper grade rather than a discount.
 - **Directions in different years.** Comparing Export with Import rows also compares years.
@@ -298,8 +414,9 @@ by `notebooks/02_eda_analysis.ipynb`.
   target ≥ 8). Diverging charts use blue ↔ red with a neutral gray midpoint, and every heatmap
   cell and bar is also labelled with its signed value.
 - **No dual axes:** measures with different scales get separate panels.
-- **Every correlation has a scatter:** the pair plot (08) covers every pair in the heatmap (05), the
-  growth scatter (10) covers H3, and the size-confound scatter (04) covers H1 and H2.
+- **Every correlation has a scatter:** the pair plot (08) covers every pair in the heatmap (05) and in
+  Table 1, the growth scatter (10) covers H3, the growth-elasticity scatter (11) covers H3's change
+  regression, and the size-confound scatter (04) covers H1 and H2.
 
 **Chart type matched to the analytical question**
 
@@ -315,6 +432,7 @@ by `notebooks/02_eda_analysis.ipynb`.
 | [08_pairplot](figures/08_pairplot.png) | What does each correlation look like, and where does size sit? | **Pair plot by group**: a scatter for every pair of the six measures in the heatmap, plus each one's distribution | Seaborn |
 | [09_elasticities](figures/09_elasticities.png) | How much does wind's estimated effect change once size is added? | **Coefficient (dot-and-interval) plot**: estimates with 95% CIs against a zero line | Matplotlib |
 | [10_growth_scatter](figures/10_growth_scatter.png) | Did countries that added more wind import more (H3)? | **Scatter on log / symmetric-log axes**: growth ratios span 0.06× to 200×, and wind changes can be negative | Matplotlib |
+| [11_growth_elasticity](figures/11_growth_elasticity.png) | Did countries whose wind output grew faster import more (H3 as a regression)? | **Scatter of ratios on log axes**: both changes are ratios (2024 / 2023), so a halving and a doubling sit the same distance from "no change" | Matplotlib |
 
 Reproduce: build the database (`uv run python scripts/run_pipeline.py`), then
 `uv run jupyter nbconvert --to notebook --execute --inplace notebooks/02_eda_analysis.ipynb`.

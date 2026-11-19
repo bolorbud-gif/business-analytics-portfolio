@@ -60,7 +60,9 @@ wind build-out drive countries' purchases of Chinese rare earths, and how expose
 
 The data passes all 19 quality checks. Every test's assumptions were checked (Shapiro-Wilk for
 normality, Levene for equal variances, plus regression diagnostics), and where an assumption failed, a
-test that doesn't need it was used.
+test that doesn't need it was used. Every hypothesis was also re-tested as a log-log regression, with the
+same verdicts. The size finding holds without the 16 small buyers that bought in only one of the two years,
+and in a Poisson model (PPML) that counts their missing years as zero.
 
 **Statistically significant isn't the same as important.** Two results aren't statistically significant
 but are too large to dismiss: wind's effect at the same size, and the link between wind growth and

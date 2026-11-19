@@ -4,10 +4,15 @@ Trade and electricity values are heavily right-skewed (a few large countries), s
 functions default to rank (Spearman) correlation or work on log10 values. Every test
 returns an effect size next to its p-value, and the assumption checks (Shapiro-Wilk,
 Levene, regression diagnostics) say which test is safe to use.
+
+Regressions: log-log OLS (fit_log_ols), the same in year-on-year changes
+(fit_log_change_ols), and Poisson pseudo-maximum likelihood (fit_ppml), which keeps
+country-years with no imports.
 """
 
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from scipy import stats
 
@@ -44,9 +49,15 @@ def correlation_table(df: pd.DataFrame, pairs: list[tuple[str, str]],
     return pd.DataFrame([correlation(df, x, y, method) for x, y in pairs])
 
 
-def correlation_matrix(df: pd.DataFrame, columns: list[str], method: str = "spearman") -> pd.DataFrame:
-    """Pairwise correlation matrix of the columns (Spearman by default)."""
-    return df[columns].corr(method=method)
+def correlation_matrix(df: pd.DataFrame, columns: list[str], method: str = "spearman",
+                       log: bool = False) -> pd.DataFrame:
+    """Pairwise correlation matrix of the columns (Spearman by default).
+
+    log=True correlates log10 values (zero or negative become missing). With
+    method="pearson" that is the linear association a log-log regression works with.
+    """
+    d = df[columns].apply(log10_positive) if log else df[columns]
+    return d.corr(method=method)
 
 
 def residualize(df: pd.DataFrame, column: str, controls: list[str]) -> pd.Series:
@@ -135,6 +146,108 @@ def tidy_coefficients(result) -> pd.DataFrame:
     }).rename_axis("term")
 
 
+def fit_ppml(df: pd.DataFrame, y: str, xs: list[str], year_effects: bool = True,
+             cluster: str | None = "partner"):
+    """Poisson pseudo-maximum likelihood (PPML), the standard regression for trade flows.
+
+    y stays in levels, so zero imports are kept instead of dropped (log 0 is undefined),
+    and the estimates stay consistent when the spread of the errors differs between
+    countries. The drivers enter as natural logs named log_<x>, so each coefficient is an
+    elasticity, comparable with fit_log_ols. Standard errors are clustered by `cluster`.
+    """
+    keep = [y, *xs, "year"] + ([cluster] if cluster else [])
+    d = df[keep].copy()
+    for col in xs:
+        d[f"log_{col}"] = np.log(d[col].where(d[col] > 0))
+    d = d.dropna()
+    formula = f"{y} ~ " + " + ".join(f"log_{x}" for x in xs)
+    if year_effects and d["year"].nunique() > 1:
+        formula += " + C(year)"
+    model = smf.glm(formula, data=d, family=sm.families.Poisson())
+    if cluster:
+        return model.fit(cov_type="cluster", cov_kwds={"groups": pd.factorize(d[cluster])[0]})
+    return model.fit()
+
+
+def log_changes(df: pd.DataFrame, columns: list[str], entity: str, period: str, start,
+                end) -> pd.DataFrame:
+    """Each entity's change from `start` to `end`, for entities with positive values of
+    every column in both periods.
+
+    dlog_<column> is the natural log of end / start; ratio_<column> is end / start itself
+    (2.0 = doubled), which reads better on a chart.
+    """
+    d = pd.DataFrame({f"dlog_{c}": paired_log_ratios(df, entity, period, c, start, end)
+                      for c in columns}).dropna()
+    for c in columns:
+        d[f"ratio_{c}"] = np.exp(d[f"dlog_{c}"])
+    return d.rename_axis(entity)
+
+
+def fit_log_change_ols(df: pd.DataFrame, y: str, xs: list[str], entity: str, period: str,
+                       start, end, cov_type: str = "HC1"):
+    """OLS in changes: log(y_end / y_start) on log(x_end / x_start), one row per entity.
+
+    Each entity is compared with itself, so anything about it that doesn't change between
+    the two periods (its size, location, industry) drops out. The coefficients are
+    elasticities of growth: 1% faster growth in x goes with b% faster growth in y. With no
+    xs, the intercept is the mean log change of y. Robust (HC1) standard errors.
+    """
+    d = log_changes(df, [y, *xs], entity, period, start, end)
+    formula = f"dlog_{y} ~ " + (" + ".join(f"dlog_{x}" for x in xs) if xs else "1")
+    return smf.ols(formula, data=d).fit(cov_type=cov_type)
+
+
+def within_share(df: pd.DataFrame, column: str, entity: str = "country", log: bool = True) -> float:
+    """Share of a variable's variance that is within entities (over time), not between them.
+
+    Country fixed-effects models use only the within part. Near 0 means each entity barely
+    changes, so a fixed-effects estimate would rest on almost no information.
+    """
+    v = log10_positive(df[column]) if log else df[column]
+    d = pd.DataFrame({"v": v, "e": df[entity]}).dropna()
+    within = d["v"] - d.groupby("e")["v"].transform("mean")
+    return float(within.var() / d["v"].var())
+
+
+def coefficient_evidence(result, term: str, factor: float = 10.0) -> dict:
+    """One coefficient of a log-log model, as evidence for a hypothesis.
+
+    Returns the estimate with its 95% interval, test statistic and p-value; its business
+    reading as a fold change (factor x the driver goes with fold x the outcome, with the
+    interval ends); and the Shapiro-Wilk p-value of the residuals. A low residual p means
+    the p-value rests on a broken normality assumption (NaN for models, such as PPML,
+    that don't assume normal errors).
+    """
+    low, high = result.conf_int().loc[term]
+    coef = float(result.params[term])
+    resid = getattr(result, "resid", None)
+    return {"term": term, "n": int(result.nobs), "coef": coef, "ci_low": float(low),
+            "ci_high": float(high), "statistic": float(result.tvalues[term]),
+            "p": float(result.pvalues[term]), "fold": fold_change(coef, factor),
+            "fold_low": fold_change(low, factor), "fold_high": fold_change(high, factor),
+            "residual_shapiro_p": float(stats.shapiro(resid).pvalue)
+            if resid is not None and len(resid) >= 3 else float("nan")}
+
+
+def compare_models(models: dict, terms: list[str]) -> pd.DataFrame:
+    """The same coefficients across several fitted models, one row per model and term.
+
+    Used for robustness checks: if the estimates barely move when the sample or the
+    estimator changes, the conclusion doesn't depend on that choice. fold_10x is the
+    business reading of an elasticity: 10x the driver goes with fold_10x times the outcome.
+    """
+    rows = []
+    for name, result in models.items():
+        tidy = tidy_coefficients(result)
+        for term in terms:
+            r = tidy.loc[term]
+            rows.append({"model": name, "term": term, "n": int(result.nobs), "coef": r["coef"],
+                         "ci_low": r["ci_low"], "ci_high": r["ci_high"], "p": r["p"],
+                         "fold_10x": fold_change(r["coef"])})
+    return pd.DataFrame(rows)
+
+
 def growth_summary(growth_pct: pd.Series, extreme: float = 500.0) -> dict:
     """Summary of percentage growth rates. Rates from tiny bases explode, so the median
     and interquartile range are reported instead of the mean."""
@@ -148,6 +261,30 @@ def growth_summary(growth_pct: pd.Series, extreme: float = 500.0) -> dict:
         "extreme_count": int((g.abs() > extreme).sum()),
         "mean_pct": float(g.mean()),
     }
+
+
+def descriptive_table(df: pd.DataFrame, columns: list[str], log_columns: list[str] = (),
+                      labels: dict | None = None, alpha: float = 0.05) -> pd.DataFrame:
+    """Descriptive statistics of a model's variables (the usual "Table 1").
+
+    One row per column, plus a log10 row for each column in log_columns: n, mean, standard
+    deviation, min, quartiles, max, skew and the Shapiro-Wilk p-value. Comparing a raw row
+    with its log10 row shows whether the log scale makes a skewed variable close to normal.
+    """
+    labels = labels or {}
+    rows = []
+    for col in columns:
+        for log in [False] + ([True] if col in log_columns else []):
+            v = df[col].dropna()
+            v = log10_positive(v).dropna() if log else v
+            shape = normality_test(v, alpha=alpha)
+            name = labels.get(col, col)
+            rows.append({"variable": f"log10 {name}" if log else name, "n": len(v),
+                         "mean": v.mean(), "sd": v.std(), "min": v.min(),
+                         "p25": v.quantile(0.25), "median": v.median(), "p75": v.quantile(0.75),
+                         "max": v.max(), "skew": shape["skew"], "shapiro_p": shape["p"],
+                         "normal": shape["normal"]})
+    return pd.DataFrame(rows).set_index("variable")
 
 
 # --- Hypothesis tests and assumption checks ----------------------------------------------
@@ -213,7 +350,7 @@ def compare_groups(df: pd.DataFrame, value: str, group: str, order: list | None 
             "medians": {str(g): float(s.median()) for g, s in zip(order, samples)}}
 
 
-def _log_ratio_to_pct(v: float) -> float:
+def log_ratio_to_pct(v: float) -> float:
     """A natural-log ratio as a percent change: log(0.5) -> -50.0."""
     return float((np.exp(v) - 1) * 100)
 
@@ -251,7 +388,7 @@ def paired_change(df: pd.DataFrame, entity: str, period: str, value: str, start,
     ranks = stats.rankdata(moved.abs())
     up, down = ranks[moved.to_numpy() > 0].sum(), ranks[moved.to_numpy() < 0].sum()
     ci = bootstrap_ci(ratio, np.median)
-    pct = _log_ratio_to_pct
+    pct = log_ratio_to_pct
     return {"test": "Wilcoxon signed-rank" if test == "wilcoxon" else "Sign test",
             "n": len(ratio), "statistic": float(w) if test == "wilcoxon" else falls,
             "p": float(wilcoxon_p) if test == "wilcoxon" else sign_p,

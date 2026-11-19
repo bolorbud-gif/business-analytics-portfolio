@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
 
 ROOT = Path(__file__).resolve().parents[2]
 FIGURES = ROOT / "docs" / "figures"
@@ -211,12 +211,15 @@ def confounding_scatter(raw: pd.DataFrame, x: str, y: str, group: str, group_ord
 def relationship_scatter(df: pd.DataFrame, x: str, y: str, xlabel: str, ylabel: str, title: str,
                          subtitle: str, source: str, note: str | None = None,
                          xscale: str = "linear", yscale: str = "linear", linthresh: float = 0.1,
-                         ref_x: float | None = None, ref_y: float | None = None):
+                         ref_x: float | None = None, ref_y: float | None = None,
+                         note_loc: str = "upper left"):
     """Scatter of one relationship, to show what a reported correlation looks like.
 
     xscale/yscale: "linear", "log" or "symlog" (log-like but allows zero and negative
-    values, linear within +-linthresh). ref_x/ref_y draw reference lines, e.g. no change.
-    note is printed in the top-left corner (the correlation and its p-value).
+    values, linear within +-linthresh). A log axis spanning about a decade or less gets
+    extra ticks (0.5, 1, 2, or 0.7, 1, 1.5, 2 for a narrower range). ref_x/ref_y draw reference lines, e.g. no change.
+    note is printed in the top corner given by note_loc ("upper left" or "upper right"),
+    e.g. the correlation and its p-value; pick the corner with no points under it.
     """
     apply_style()
     d = df[[x, y]].dropna()
@@ -226,18 +229,26 @@ def relationship_scatter(df: pd.DataFrame, x: str, y: str, xlabel: str, ylabel: 
     if ref_y is not None:
         ax.axhline(ref_y, color=AXIS, linewidth=1)
     ax.scatter(d[x], d[y], s=48, color=BLUE, edgecolor=SURFACE, linewidth=1, alpha=0.9, zorder=3)
-    for axis, scale, setter in [(ax.xaxis, xscale, ax.set_xscale), (ax.yaxis, yscale, ax.set_yscale)]:
+    for axis, col, scale, setter in [(ax.xaxis, x, xscale, ax.set_xscale),
+                                     (ax.yaxis, y, yscale, ax.set_yscale)]:
         if scale == "symlog":
             setter("symlog", linthresh=linthresh)
         elif scale == "log":
             setter("log")
+            positive = d.loc[d[col] > 0, col]
+            decades = np.log10(positive.max() / positive.min()) if len(positive) else np.inf
+            if decades < 1.2:  # narrow range: label 2 and 5 too (under ~0.6 decades, 1.5, 3, 7 as well)
+                subs = (1.0, 2.0, 5.0) if decades >= 0.6 else (1.0, 1.5, 2.0, 3.0, 5.0, 7.0)
+                axis.set_major_locator(LogLocator(base=10, subs=subs))
+            axis.set_minor_formatter(NullFormatter())  # no "2 x 10^0" labels between ticks
         if scale != "linear":
             axis.set_major_formatter(FuncFormatter(lambda v, _p: f"{v:g}"))
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     if note:
-        ax.text(0.02, 0.97, note, transform=ax.transAxes, ha="left", va="top", fontsize=9.5,
-                color=INK_2)
+        right = note_loc == "upper right"
+        ax.text(0.98 if right else 0.02, 0.97, note, transform=ax.transAxes,
+                ha="right" if right else "left", va="top", fontsize=9.5, color=INK_2)
     _titles(fig, title, subtitle)
     _source(fig, source)
     fig.tight_layout(rect=(0, 0.03, 1, 0.86))

@@ -181,8 +181,9 @@ are buyers? Start with the [executive summary](docs/executive_summary.md); the f
 |---|---|
 | Modular EDA Python package | [`src/analysis/`](src/analysis/): `exploratory.py` (connect, 19 quality checks, describe, concentration), `statistical.py` (correlation, partial correlation, regression, hypothesis tests, diagnostics), `charts.py` (visualization suite). Function reference: [docs/api_reference.md](docs/api_reference.md) |
 | Statistical analysis report with business insights | [docs/statistical_analysis_report.md](docs/statistical_analysis_report.md) |
-| Visualization suite (Matplotlib + Seaborn) | 10 figures in [`docs/figures/`](docs/figures/), indexed in the report's appendix. Every reported correlation has a scatter plot |
-| Statistical testing and hypothesis validation | 5 hypotheses, each with its assumptions checked (Shapiro-Wilk, Levene), its business magnitude and effect size reported before the p-value, Holm correction, and statistical and business significance judged separately: notebook 02, section 4, and report section 7 |
+| Visualization suite (Matplotlib + Seaborn) | 11 figures in [`docs/figures/`](docs/figures/), indexed in the report's appendix. Every reported correlation has a scatter plot |
+| Statistical testing and hypothesis validation | 5 hypotheses, each with its assumptions checked (Shapiro-Wilk, Levene), its business magnitude and effect size reported before the p-value, Holm correction, and statistical and business significance judged separately. Each hypothesis is re-checked as a log-log OLS regression, with robustness checks for missing years (PPML, balanced sample): notebook 02, sections 3–4, and report sections 6–7 |
+| Descriptive statistics of the regression sample (Table 1) | Notebook 02, section 1.4, and report section 4 |
 | Data-quality validation | [notebooks/01_data_exploration.ipynb](notebooks/01_data_exploration.ipynb) |
 | Univariate, bivariate, multivariate analysis | [notebooks/02_eda_analysis.ipynb](notebooks/02_eda_analysis.ipynb) |
 | Executive summary | [docs/executive_summary.md](docs/executive_summary.md) |

@@ -435,3 +435,107 @@ def test_buyer_volumes_sums_one_year_and_direction():
                           "year": [2024, 2024, 2024, 2023], "partner": ["A", "A", "A", "B"],
                           "quantity_kg": [1.0, 2.0, 50.0, 7.0]})
     assert ex.buyer_volumes(trade, 2024).to_dict() == {"A": 3.0}
+
+
+# --- Regression checks: descriptive table, PPML, change regressions, missing years ----------
+
+def test_descriptive_table_adds_a_log10_row_with_normality():
+    rng = np.random.default_rng(5)
+    df = pd.DataFrame({"y": 10 ** rng.normal(3, 1, 200), "z": rng.normal(0, 1, 200)})  # log-normal y
+    out = st.descriptive_table(df, ["y", "z"], log_columns=["y"], labels={"y": "Imports"})
+    assert list(out.index) == ["Imports", "log10 Imports", "z"]
+    assert not out.loc["Imports", "normal"] and out.loc["Imports", "skew"] > 2  # skewed raw ...
+    assert out.loc["log10 Imports", "normal"]                                   # ... normal in logs
+    assert out.loc["Imports", "median"] == pytest.approx(df["y"].median())
+
+
+def test_correlation_matrix_can_use_log_values():
+    df = pd.DataFrame({"a": [1.0, 10.0, 100.0, 1000.0], "b": [2.0, 20.0, 200.0, 2000.0]})
+    assert st.correlation_matrix(df, ["a", "b"], "pearson", log=True).loc["a", "b"] == pytest.approx(1)
+
+
+def test_fit_ppml_recovers_elasticities_and_keeps_zeros():
+    df = confounded()
+    df.loc[:9, "y"] = 0.0  # zero imports: dropped by a log model, kept by PPML
+    coef = st.tidy_coefficients(st.fit_ppml(df, "y", ["x", "z"]))["coef"]
+    assert coef["log_z"] == pytest.approx(1.5, abs=0.2)
+    assert coef["log_x"] == pytest.approx(0.0, abs=0.2)
+    assert int(st.fit_ppml(df, "y", ["x", "z"]).nobs) == len(df)
+
+
+def test_log_change_ols_recovers_a_growth_elasticity_and_a_mean_change():
+    rng = np.random.default_rng(3)
+    n = 300
+    x0, g = 10 ** rng.uniform(0, 3, n), np.exp(rng.normal(0, 0.5, n))
+    y0 = 10 ** rng.uniform(0, 3, n)
+    df = pd.DataFrame({"c": np.r_[np.arange(n), np.arange(n)], "t": [1] * n + [2] * n,
+                       "x": np.r_[x0, x0 * g],
+                       "y": np.r_[y0, y0 * g ** 0.7 * np.exp(rng.normal(0, 0.1, n))]})
+    slope = st.coefficient_evidence(st.fit_log_change_ols(df, "y", ["x"], "c", "t", 1, 2), "dlog_x")
+    assert slope["coef"] == pytest.approx(0.7, abs=0.05) and slope["n"] == n
+    halved = pd.DataFrame({"c": ["a", "b", "a", "b"], "t": [1, 1, 2, 2], "p": [10.0, 4.0, 5.0, 2.0]})
+    mean = st.coefficient_evidence(st.fit_log_change_ols(halved, "p", [], "c", "t", 1, 2), "Intercept")
+    assert st.log_ratio_to_pct(mean["coef"]) == pytest.approx(-50)
+    changes = st.log_changes(halved, ["p"], "c", "t", 1, 2)
+    assert changes["ratio_p"].tolist() == pytest.approx([0.5, 0.5])
+
+
+def test_coefficient_evidence_and_compare_models_give_fold_changes():
+    res = st.fit_log_ols(confounded(), "y", ["x", "z"])
+    ev = st.coefficient_evidence(res, "log_z")
+    assert ev["fold"] == pytest.approx(10 ** ev["coef"])
+    assert ev["fold_low"] < ev["fold"] < ev["fold_high"]
+    assert 0 <= ev["residual_shapiro_p"] <= 1
+    table = st.compare_models({"A": res, "B": res}, ["log_x", "log_z"])
+    assert list(table["model"]) == ["A", "A", "B", "B"]
+    assert table.loc[1, "fold_10x"] == pytest.approx(ev["fold"])
+
+
+def panel_with_gaps():
+    """Partners A (both years), B (2023 only), C (2024 only), D (neither); E has no wind."""
+    return pd.DataFrame({
+        "partner": list("AABBCCDDEE"), "country": list("AABBCCDDEE"),
+        "year": [2023, 2024] * 5,
+        "imports_from_china_kg": [100.0, 200.0, 5.0, np.nan, np.nan, 8.0, np.nan, np.nan, 50.0, 60.0],
+        "wind_capacity_gw": [1.0] * 8 + [np.nan, np.nan],
+        "total_generation_twh": [10.0, 11.0, 2.0, 2.0, 3.0, 3.0, 1.0, 1.0, 5.0, 5.0]})
+
+
+def test_import_year_pattern_finds_partners_that_skip_years():
+    out = ex.import_year_pattern(panel_with_gaps(), 2023, 2024)
+    assert out.loc[list("ABCD"), "pattern"].tolist() == ["Both years", "2023 only", "2024 only", "Neither"]
+    assert out.loc[list("ABD"), "buyer_type"].tolist() == ["Every year", "Skipped a year", "Never"]
+    assert out.loc["A", "typical_kg"] == 150 and np.isnan(out.loc["D", "typical_kg"])
+
+
+def test_analysis_sample_can_keep_non_buyers_as_zero():
+    panel = panel_with_gaps()
+    buyers = ex.analysis_sample(panel)
+    assert len(buyers) == 4  # A twice, B 2023, C 2024; E has no wind data
+    everyone = ex.analysis_sample(panel, include_non_buyers=True)
+    assert len(everyone) == 8 and (everyone["imports_from_china_kg"] == 0).sum() == 4
+
+
+def test_balanced_panel_keeps_entities_seen_in_every_period():
+    buyers = ex.analysis_sample(panel_with_gaps())
+    assert ex.balanced_panel(buyers)["country"].tolist() == ["A", "A"]
+
+
+def test_within_share_separates_change_over_time_from_differences_between_entities():
+    fixed = pd.DataFrame({"country": list("AABB"), "v": [10.0, 10.0, 1000.0, 1000.0]})
+    assert st.within_share(fixed, "v") == pytest.approx(0)  # no country ever changes
+    moving = pd.DataFrame({"country": list("AABB"), "v": [10.0, 1000.0, 10.0, 1000.0]})
+    assert st.within_share(moving, "v") == pytest.approx(1)  # all variation is over time
+
+
+def test_relationship_scatter_labels_a_narrow_log_axis_and_moves_the_note(tmp_path):
+    df = pd.DataFrame({"x": [0.72, 0.9, 1.0, 1.4, 2.0], "y": [0.1, 1.0, 3.0, 0.5, 50.0]})
+    fig = ch.relationship_scatter(df, "x", "y", "X", "Y", "t", "s", "src", note="b = 0.1",
+                                  xscale="log", yscale="log", ref_x=1, ref_y=1, note_loc="upper right")
+    ax = fig.axes[0]
+    fig.canvas.draw()
+    shown = [t.get_text() for t in ax.get_xticklabels() if t.get_text()]
+    assert {"1", "1.5", "2"} <= set(shown)  # not just "1" plus a "2 x 10^0" minor label
+    note = [t for t in ax.texts if t.get_text() == "b = 0.1"][0]
+    assert note.get_ha() == "right"
+    ch.plt.close(fig)

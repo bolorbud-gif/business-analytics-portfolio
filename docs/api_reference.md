@@ -11,8 +11,10 @@ Exploratory data analysis package for the rare-earth / wind-power database.
 
 Exploratory analysis: open the Assignment 4 database, check its quality, describe the data.
 
-- **`analysis_sample`** `def analysis_sample(panel: pandas.DataFrame) -> pandas.DataFrame`
+- **`analysis_sample`** `def analysis_sample(panel: pandas.DataFrame, include_non_buyers: bool = False) -> pandas.DataFrame`
   Country-years usable for the multivariate analysis: imports, wind capacity and total generation all recorded and positive (so logs exist). Adds a size tercile.
+- **`balanced_panel`** `def balanced_panel(df: pandas.DataFrame, entity: str = 'country', period: str = 'year') -> pandas.DataFrame`
+  Only the entities observed in every period that df covers (a balanced panel).
 - **`buyer_price_changes`** `def buyer_price_changes(trade: pandas.DataFrame, start: int, end: int, trade_flow: str = 'Export') -> pandas.DataFrame`
   Each partner's volume and price (USD per kg) in both years, for partners present in both.
 - **`buyer_volumes`** `def buyer_volumes(trade: pandas.DataFrame, year: int, trade_flow: str = 'Export') -> pandas.Series`
@@ -27,6 +29,8 @@ Exploratory analysis: open the Assignment 4 database, check its quality, describ
   Univariate summary: count, missing, centre, spread and skew for each column.
 - **`growth_vs_wind`** `def growth_vs_wind(panel: pandas.DataFrame, year: int) -> pandas.DataFrame`
   Country rows for one year with both import growth and wind generation change recorded.
+- **`import_year_pattern`** `def import_year_pattern(panel: pandas.DataFrame, start: int, end: int, value: str = 'imports_from_china_kg', entity: str = 'partner') -> pandas.DataFrame`
+  Which partners bought from China in both years, in only one, or in neither.
 - **`load_country_panel`** `def load_country_panel(con) -> pandas.DataFrame`
   One row per partner country and year: imports from China, growth, wind, and size.
 - **`load_trade`** `def load_trade(con) -> pandas.DataFrame`
@@ -56,16 +60,26 @@ Statistical analysis: correlation, partial correlation, regression, hypothesis t
 
 - **`bootstrap_ci`** `def bootstrap_ci(values, statistic, n_boot: int = 2000, level: float = 0.95, seed: int = 0) -> dict`
   Percentile bootstrap confidence interval for any statistic of a 1-D sample.
+- **`coefficient_evidence`** `def coefficient_evidence(result, term: str, factor: float = 10.0) -> dict`
+  One coefficient of a log-log model, as evidence for a hypothesis.
 - **`compare_groups`** `def compare_groups(df: pandas.DataFrame, value: str, group: str, order: list | None = None) -> dict`
   Kruskal-Wallis test: do the groups' distributions differ? (no normality assumed)
+- **`compare_models`** `def compare_models(models: dict, terms: list[str]) -> pandas.DataFrame`
+  The same coefficients across several fitted models, one row per model and term.
 - **`correlation`** `def correlation(df: pandas.DataFrame, x: str, y: str, method: str = 'spearman') -> dict`
   Correlation between two columns over rows where both are present.
-- **`correlation_matrix`** `def correlation_matrix(df: pandas.DataFrame, columns: list[str], method: str = 'spearman') -> pandas.DataFrame`
+- **`correlation_matrix`** `def correlation_matrix(df: pandas.DataFrame, columns: list[str], method: str = 'spearman', log: bool = False) -> pandas.DataFrame`
   Pairwise correlation matrix of the columns (Spearman by default).
 - **`correlation_table`** `def correlation_table(df: pandas.DataFrame, pairs: list[tuple[str, str]], method: str = 'spearman') -> pandas.DataFrame`
   correlation() for several column pairs, one row each.
+- **`descriptive_table`** `def descriptive_table(df: pandas.DataFrame, columns: list[str], log_columns: list[str] = (), labels: dict | None = None, alpha: float = 0.05) -> pandas.DataFrame`
+  Descriptive statistics of a model's variables (the usual "Table 1").
+- **`fit_log_change_ols`** `def fit_log_change_ols(df: pandas.DataFrame, y: str, xs: list[str], entity: str, period: str, start, end, cov_type: str = 'HC1')`
+  OLS in changes: log(y_end / y_start) on log(x_end / x_start), one row per entity.
 - **`fit_log_ols`** `def fit_log_ols(df: pandas.DataFrame, y: str, xs: list[str], year_effects: bool = True, cluster: str | None = 'partner')`
   OLS of log10(y) on log10(xs), with optional year fixed effects.
+- **`fit_ppml`** `def fit_ppml(df: pandas.DataFrame, y: str, xs: list[str], year_effects: bool = True, cluster: str | None = 'partner')`
+  Poisson pseudo-maximum likelihood (PPML), the standard regression for trade flows.
 - **`fold_change`** `def fold_change(elasticity: float, factor: float = 10.0) -> float`
   Business reading of an elasticity: y is multiplied by this when x is multiplied by `factor`. An elasticity of 0.94 means 10x the wind capacity goes with 8.7x the imports.
 - **`group_assumptions`** `def group_assumptions(df: pandas.DataFrame, value: str, group: str, order: list | None = None, log: bool = False, alpha: float = 0.05) -> pandas.DataFrame`
@@ -76,6 +90,10 @@ Statistical analysis: correlation, partial correlation, regression, hypothesis t
   Collect hypothesis tests and adjust for testing several at once (Holm method).
 - **`log10_positive`** `def log10_positive(s: pandas.Series) -> pandas.Series`
   log10 of the positive values; zero or negative becomes NaN (log is undefined).
+- **`log_changes`** `def log_changes(df: pandas.DataFrame, columns: list[str], entity: str, period: str, start, end) -> pandas.DataFrame`
+  Each entity's change from `start` to `end`, for entities with positive values of every column in both periods.
+- **`log_ratio_to_pct`** `def log_ratio_to_pct(v: float) -> float`
+  A natural-log ratio as a percent change: log(0.5) -> -50.0.
 - **`normality_test`** `def normality_test(values: pandas.Series, log: bool = False, alpha: float = 0.05) -> dict`
   Shapiro-Wilk test of normality (on log10 values if log=True). Low p = not normal.
 - **`paired_change`** `def paired_change(df: pandas.DataFrame, entity: str, period: str, value: str, start, end, test: str = 'wilcoxon') -> dict`
@@ -98,6 +116,8 @@ Statistical analysis: correlation, partial correlation, regression, hypothesis t
   Coefficient table: estimate, standard error, p-value and 95% interval.
 - **`top_share`** `def top_share(values, k: int = 5) -> float`
   Share of the total held by the k largest values.
+- **`within_share`** `def within_share(df: pandas.DataFrame, column: str, entity: str = 'country', log: bool = True) -> float`
+  Share of a variable's variance that is within entities (over time), not between them.
 
 ### `src.analysis.charts`
 
@@ -123,7 +143,7 @@ Charts for the exploratory analysis (Matplotlib + Seaborn).
   Horizontal bars of each country's share (output of exploratory.market_shares).
 - **`pair_plot`** `def pair_plot(df: pandas.DataFrame, columns: list[str], labels: list[str], hue: str, hue_order: list[str], title: str, subtitle: str, source: str, height: float = 2.1)`
   Seaborn pair plot of log10 values: every pairwise relationship at once, coloured by group.
-- **`relationship_scatter`** `def relationship_scatter(df: pandas.DataFrame, x: str, y: str, xlabel: str, ylabel: str, title: str, subtitle: str, source: str, note: str | None = None, xscale: str = 'linear', yscale: str = 'linear', linthresh: float = 0.1, ref_x: float | None = None, ref_y: float | None = None)`
+- **`relationship_scatter`** `def relationship_scatter(df: pandas.DataFrame, x: str, y: str, xlabel: str, ylabel: str, title: str, subtitle: str, source: str, note: str | None = None, xscale: str = 'linear', yscale: str = 'linear', linthresh: float = 0.1, ref_x: float | None = None, ref_y: float | None = None, note_loc: str = 'upper left')`
   Scatter of one relationship, to show what a reported correlation looks like.
 - **`save`** `def save(fig, name: str, folder: pathlib.Path = WindowsPath('C:/Users/mcobp/business-analytics-portfolio/docs/figures')) -> pathlib.Path`
   Save a figure as 300 dpi PNG and vector SVG in docs/figures/ (or `folder`).

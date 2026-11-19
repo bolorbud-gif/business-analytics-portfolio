@@ -7,6 +7,7 @@
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from scipy import stats
 
@@ -160,13 +161,57 @@ def wind_trend(wind: pd.DataFrame, focus: str = "China") -> tuple[pd.DataFrame, 
     return trend, {"series": series, "labels": labels, "countries": n, "focus_ahead": focus_ahead}
 
 
-def analysis_sample(panel: pd.DataFrame) -> pd.DataFrame:
+def analysis_sample(panel: pd.DataFrame, include_non_buyers: bool = False) -> pd.DataFrame:
     """Country-years usable for the multivariate analysis: imports, wind capacity and
-    total generation all recorded and positive (so logs exist). Adds a size tercile."""
-    d = panel[(panel["imports_from_china_kg"] > 0) & (panel["wind_capacity_gw"] > 0)
-              & (panel["total_generation_twh"] > 0)].copy()
+    total generation all recorded and positive (so logs exist). Adds a size tercile.
+
+    include_non_buyers=True also keeps the country-years with no recorded imports, as 0 kg,
+    in the years that have import data, for models that can use zeros (fit_ppml). A
+    missing year most likely means China recorded no shipment, but the data can't confirm
+    that it is a true zero.
+    """
+    imports = panel["imports_from_china_kg"]
+    if include_non_buyers:
+        trade_years = panel.loc[imports.notna(), "year"].unique()
+        panel = panel.assign(imports_from_china_kg=imports.fillna(0).where(
+            panel["year"].isin(trade_years)))
+        buys = panel["imports_from_china_kg"] >= 0
+    else:
+        buys = imports > 0
+    d = panel[buys & (panel["wind_capacity_gw"] > 0) & (panel["total_generation_twh"] > 0)].copy()
     d["size_group"] = pd.qcut(d["total_generation_twh"], 3, labels=["Small", "Medium", "Large"])
     return d.reset_index(drop=True)
+
+
+def balanced_panel(df: pd.DataFrame, entity: str = "country", period: str = "year") -> pd.DataFrame:
+    """Only the entities observed in every period that df covers (a balanced panel).
+
+    Re-running a model on it checks that entities seen in only some periods don't drive
+    the result.
+    """
+    seen = df.groupby(entity)[period].transform("nunique")
+    return df[seen == df[period].nunique()].reset_index(drop=True)
+
+
+def import_year_pattern(panel: pd.DataFrame, start: int, end: int,
+                        value: str = "imports_from_china_kg", entity: str = "partner") -> pd.DataFrame:
+    """Which partners bought from China in both years, in only one, or in neither.
+
+    One row per partner: its imports in each year (NaN = none recorded), the pattern, a
+    buyer_type ("Every year", "Skipped a year", "Never") and its typical (median) recorded
+    imports, to compare partners that skip years with partners that buy every year.
+    """
+    d = panel[panel["year"].isin([start, end])]
+    wide = d.set_index([entity, "year"])[value].unstack("year").reindex(columns=[start, end])
+    bought = wide > 0
+    pattern = np.select([bought.all(axis=1), bought[start], bought[end]],
+                        ["Both years", f"{start} only", f"{end} only"], "Neither")
+    out = pd.DataFrame({f"kg_{start}": wide[start], f"kg_{end}": wide[end], "pattern": pattern},
+                       index=wide.index)
+    out["buyer_type"] = np.select([out["pattern"] == "Both years", out["pattern"] == "Neither"],
+                                  ["Every year", "Never"], "Skipped a year")
+    out["typical_kg"] = wide.where(bought).median(axis=1)
+    return out.sort_values("typical_kg", ascending=False)
 
 
 # --- Describing ---------------------------------------------------------------------------

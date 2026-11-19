@@ -27,9 +27,12 @@
   100), wind generation, change and capacity, the merge on country and year, and the
   one-sheet layout. I chose to measure imports as countries buying from China.
 - **Assignment 5 (Exploratory analysis):** Used Claude Code to write the analysis package
-  (`src/analysis/`), the two notebooks, the ten Matplotlib/Seaborn charts, the hypothesis tests
+  (`src/analysis/`), the two notebooks, the eleven Matplotlib/Seaborn charts, the hypothesis tests
   and regression diagnostics, the statistical analysis report, the API reference and the
   executive summary from the Assignment 5 brief, working against my Assignment 4 database.
+  I asked which regressions the data supports, whether countries that skip years break log-log
+  OLS or ARIMA, and for each hypothesis to be checked with log-log OLS and a descriptive Table 1;
+  those answers were added as the regression check and robustness sections.
 
 ## Where I deliberately did not use it
 
@@ -60,6 +63,6 @@
 ## Verification
 
 - I checked Japan's 2024 import growth by hand (63.0%), ran the pipeline twice to confirm
-  nothing changed, and reviewed the quality report. 71 automated tests cover the pipeline
+  nothing changed, and reviewed the quality report. 81 automated tests cover the pipeline
   and the analysis functions.
 - I compile all of my work in one folder and save its version history in Google Drive.
