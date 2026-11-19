@@ -1,6 +1,6 @@
 # AI Tool Use
 
-*Last updated: 2026-11-18*
+*Last updated: 2026-11-19*
 
 ## Tools used
 
@@ -26,6 +26,9 @@
   imports from China, the growth formula ((this year − previous year) ÷ previous year ×
   100), wind generation, change and capacity, the merge on country and year, and the
   one-sheet layout. I chose to measure imports as countries buying from China.
+- **Assignment 5 (Exploratory analysis):** Used Claude Code to write the analysis functions
+  (`src/analysis/`), the two notebooks, the seven charts, the findings document and the
+  executive summary from the Assignment 5 brief, working against my Assignment 4 database.
 
 ## Where I deliberately did not use it
 
@@ -39,9 +42,14 @@
 - It first stored trade values as REAL (floating point). I caught this with the course's
   common-mistakes checklist, and it was changed to exact integer dollars. It also suggested
   opening the database in a way that skipped foreign-key checks.
+- In Assignment 5 it first gave a chart the title "China buys at higher prices than it sells",
+  which the data can't support: the buying and selling rows come from different years. The title
+  was corrected. One notebook cell also crashed on the synthetic sample (it assumed China was in
+  the data) until it was fixed.
 
 ## Verification
 
 - I checked Japan's 2024 import growth by hand (63.0%), ran the pipeline twice to confirm
-  nothing changed, and reviewed the quality report. 25 automated tests cover the pipeline.
+  nothing changed, and reviewed the quality report. 43 automated tests cover the pipeline
+  and the analysis functions.
 - I compile all of my work in one folder and save its version history in Google Drive.

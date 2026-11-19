@@ -156,7 +156,7 @@ report's *Re-runnability check* table shows the result, and any change is logged
 - [docs/ERD.md](docs/ERD.md): entity relationship diagram
 - [docs/normalization.md](docs/normalization.md): 1NF / 2NF / 3NF analysis with evidence
 - [docs/data_dictionary.md](docs/data_dictionary.md): every table and field, with type, key, source and business rule
-- [docs/schema.sql](docs/schema.sql): generated `CREATE TABLE` statements
+- [docs/schema.sql](docs/schema.sql): generated `CREATE TABLE` / `INDEX` / `VIEW` statements
 - [docs/setup.md](docs/setup.md): setup and supplying restricted data
 
 ### Other commands
@@ -166,4 +166,27 @@ uv run python scripts/setup_database.py                    # create empty tables
 uv run python scripts/setup_database.py --ddl docs/schema.sql   # regenerate schema SQL
 uv run python scripts/make_sample_data.py                  # regenerate the synthetic sample
 uv run pytest                                              # run the tests
+```
+
+## Exploratory Analysis (Assignment 5)
+
+**Question:** does the wind build-out drive countries' demand for Chinese rare earths, and how exposed
+are buyers? Start with the [executive summary](docs/executive_summary.md); the full analysis is in
+[docs/eda_findings.md](docs/eda_findings.md).
+
+![Five countries buy over 80% of China's rare-earth exports](docs/figures/01_concentration.png)
+
+| Step | Where |
+|---|---|
+| Connect to the database and validate data quality (19 checks) | [notebooks/01_data_exploration.ipynb](notebooks/01_data_exploration.ipynb) |
+| Univariate, bivariate and multivariate analysis, 7 charts | [notebooks/02_eda_analysis.ipynb](notebooks/02_eda_analysis.ipynb) |
+| Reusable analysis functions | `src/analysis/exploratory.py` (load, check, describe), `statistical.py` (correlation, partial correlation, regression), `charts.py` (figures) |
+| Findings and modeling implications | [docs/eda_findings.md](docs/eda_findings.md) |
+| Executive summary | [docs/executive_summary.md](docs/executive_summary.md) |
+
+Re-run the notebooks after rebuilding the database. Without the real data they fall back to the
+synthetic sample and say so; charts are saved to `docs/figures/` only from real data.
+
+```bash
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/01_data_exploration.ipynb notebooks/02_eda_analysis.ipynb
 ```
