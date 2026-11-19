@@ -35,6 +35,9 @@ RC = {
     "xtick.color": MUTED, "ytick.color": MUTED, "xtick.labelcolor": INK_2,
     "ytick.labelcolor": INK_2, "lines.linewidth": 2, "legend.frameon": False,
     "axes.axisbelow": True,
+    # fixed sizes, so Seaborn's context scaling can't enlarge labels into each other
+    "axes.labelsize": 10, "axes.titlesize": 10.5, "xtick.labelsize": 9.5,
+    "ytick.labelsize": 9.5, "legend.fontsize": 9, "legend.title_fontsize": 9,
 }
 
 
@@ -158,7 +161,7 @@ def confounding_scatter(raw: pd.DataFrame, x: str, y: str, group: str, group_ord
     a.set_ylabel(ylabel)
     a.set_title(raw_title, loc="left", fontsize=10.5, color=INK)
     a.legend(title="Country size (total electricity generation)", title_fontsize=8.5,
-             fontsize=8.5, loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=3)
+             fontsize=8.5, loc="upper center", bbox_to_anchor=(0.5, -0.24), ncol=3)
     b.scatter(partial["x_resid"], partial["y_resid"], s=48, color=BLUE, edgecolor=SURFACE,
               linewidth=1, alpha=0.9, zorder=3)
     b.axhline(0, color=AXIS, linewidth=1)
