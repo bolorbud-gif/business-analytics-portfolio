@@ -1,6 +1,18 @@
 -- Database schema (SQLite), generated from src/data_pipeline/load.py
 -- Regenerate: uv run python scripts/setup_database.py --ddl docs/schema.sql
 
+CREATE TABLE country_wind_imports (
+	partner VARCHAR NOT NULL,
+	country VARCHAR NOT NULL,
+	year INTEGER NOT NULL,
+	imports_from_china_kg FLOAT,
+	import_growth_pct FLOAT,
+	wind_generation_twh FLOAT,
+	wind_generation_change_twh FLOAT,
+	wind_capacity_gw FLOAT,
+	PRIMARY KEY (partner, year)
+);
+
 CREATE TABLE electricity_generation (
 	country VARCHAR NOT NULL,
 	iso3 VARCHAR(3) NOT NULL,

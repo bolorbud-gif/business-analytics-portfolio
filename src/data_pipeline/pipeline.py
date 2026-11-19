@@ -13,7 +13,8 @@ from src.data_pipeline.extract import extract
 from src.data_pipeline.load import create_schema, get_engine, load
 from src.data_pipeline.quality import QualityReport
 from src.data_pipeline.transform import (
-    build_partner_trade_energy, transform_electricity, transform_trade,
+    build_country_wind_imports, build_partner_trade_energy, transform_electricity,
+    transform_trade,
 )
 from src.data_pipeline.validate import validate_table
 
@@ -29,11 +30,13 @@ def run_pipeline(
     max_rejected_pct: float = 5.0,
     rebuild: bool = False,
     echo: bool = False,
+    export_csv=None,
 ) -> QualityReport:
     """Extract -> transform -> validate -> load. Builds the database or refreshes it.
 
     Always writes the quality report (if report_path is given), also when a stage
-    fails, so the reason is recorded. Raises PipelineError on failure.
+    fails, so the reason is recorded. Raises PipelineError on failure. If export_csv
+    is given, the country_wind_imports table is also saved there as CSV.
     """
     report = QualityReport(raw_dir=str(raw_dir), database=database_url)
     checks = {"rejected_dir": Path(rejected_dir), "max_rejected_pct": max_rejected_pct}
@@ -52,12 +55,20 @@ def run_pipeline(
                                   report, **checks)
         if len(combined) != len(trade):
             raise PipelineError("partner_trade_energy row count differs from trade_flows")
+        wind_imports = validate_table("country_wind_imports",
+                                      build_country_wind_imports(trade, electricity, report),
+                                      report, **checks)
 
         logger.info("--- Stage: load")
         engine = get_engine(database_url, echo)
         create_schema(engine, rebuild=rebuild)
         load(engine, {"trade_flows": trade, "electricity_generation": electricity,
-                      "partner_trade_energy": combined}, report)
+                      "partner_trade_energy": combined,
+                      "country_wind_imports": wind_imports}, report)
+        if export_csv:
+            Path(export_csv).parent.mkdir(parents=True, exist_ok=True)
+            wind_imports.to_csv(export_csv, index=False)
+            logger.info("country_wind_imports exported to %s", export_csv)
         report.status = "SUCCESS"
         return report
     except Exception as exc:

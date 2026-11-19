@@ -13,7 +13,8 @@ from src.data_pipeline.load import create_schema, get_engine
 from src.data_pipeline.pipeline import run_pipeline
 from src.data_pipeline.quality import QualityReport
 from src.data_pipeline.transform import (
-    build_partner_trade_energy, transform_electricity, transform_trade,
+    build_country_wind_imports, build_partner_trade_energy, transform_electricity,
+    transform_trade,
 )
 from src.data_pipeline.validate import validate_table
 
@@ -81,6 +82,44 @@ def test_partner_names_mapped_and_unit_value(trade, electricity):
     assert pte.loc["Japan", "unit_value_usd_per_kg"] == pytest.approx(50.0)  # 100k USD / 2000 kg
     assert pd.isna(pte.loc["Korea, Rep.", "unit_value_usd_per_kg"])  # quantity 0
     assert pd.isna(pte.loc["France", "total_generation_twh"])  # no electricity data: kept
+
+
+def clean_trade(rows):
+    """rows: (trade_flow, year, partner, quantity) in the shape transform_trade returns."""
+    return pd.DataFrame([{
+        "reporter": "China", "trade_flow": flow, "product_code": "284690",
+        "product_description": "x", "year": year, "partner": partner,
+        "trade_value_kusd": 1.0, "quantity": qty, "quantity_unit": "kg",
+    } for flow, year, partner, qty in rows])
+
+
+def test_country_wind_imports_growth_rules(electricity):
+    trade = clean_trade([
+        ("Export", 2022, "Japan", 100.0), ("Export", 2023, "Japan", 200.0),
+        ("Export", 2022, "France", 0.0), ("Export", 2023, "France", 50.0),   # previous is 0
+        ("Export", 2023, "Korea, Rep.", 80.0),                               # no previous year
+        ("Import", 2022, "Korea, Rep.", 999.0),                              # Import: ignored
+        ("Export", 2023, "China", 5.0),                                      # re-imports: dropped
+    ])
+    out = build_country_wind_imports(trade, electricity).set_index(["partner", "year"])
+    assert "China" not in out.index.get_level_values("partner")
+    assert out.loc[("Japan", 2023), "import_growth_pct"] == pytest.approx(100.0)  # (200-100)/100*100
+    assert pd.isna(out.loc[("France", 2023), "import_growth_pct"])
+    assert pd.isna(out.loc[("Korea, Rep.", 2023), "import_growth_pct"])
+    assert pd.isna(out.loc[("Korea, Rep.", 2022), "imports_from_china_kg"])  # missing, not 0
+    assert len(out) == 3 * 2  # every partner x every year
+
+
+def test_country_wind_imports_wind_columns():
+    trade = clean_trade([("Export", 2023, "Korea, Rep.", 10.0)])
+    electricity = pd.DataFrame({
+        "country": ["South Korea", "South Korea"], "year": [2023, 2023],
+        "source": ["Wind", "Solar"], "generation_twh": [4.0, 30.0],
+        "generation_yoy_twh": [0.5, 3.0], "capacity_gw": [2.0, 20.0],
+    })
+    row = build_country_wind_imports(trade, electricity).iloc[0]
+    assert (row["wind_generation_twh"], row["wind_generation_change_twh"],
+            row["wind_capacity_gw"]) == (4.0, 0.5, 2.0)  # Wind only, matched via name map
 
 
 # --- Validate: bad records are rejected, not loaded --------------------------
@@ -159,6 +198,7 @@ def test_sample_pipeline_quality_counts(tmp_path):
     assert (t["trade_flows"].rows_in, t["trade_flows"].duplicates_dropped,
             t["trade_flows"].rows_rejected, t["trade_flows"].rows_after_load) == (49, 1, 2, 46)
     assert t["electricity_generation"].rows_rejected == 1
+    assert t["country_wind_imports"].rows_after_load == 8 * 3  # 8 partners x 3 years
     assert "## Re-runnability check" in (tmp_path / "report.md").read_text(encoding="utf-8")
 
 

@@ -58,12 +58,21 @@ and [docs/quality_report_sample.md](docs/quality_report_sample.md) (sample). Eac
 row counts, missingness, duplicates, rejected-record counts, the action taken on bad records,
 and a re-runnability check.
 
+### Database tables
+
+| Table | One row is… |
+|---|---|
+| `trade_flows` | China's rare-earth trade with one partner, in one direction, in one year (from `data1.xlsx`) |
+| `electricity_generation` | One country's electricity from one source in one year (from `data2.xlsx`) |
+| `partner_trade_energy` | One trade row plus the partner's power mix that year |
+| `country_wind_imports` | One country in one year: rare-earth imports from China (kg), import growth %, wind generation, wind generation change and wind capacity. Also saved as `data/processed/country_wind_imports.csv` |
+
 ### How it works
 
 | Stage | Module | What it does |
 |---|---|---|
 | Extract | `src/data_pipeline/extract.py` | Reads the Excel files listed in `config/app_config.yaml` with Pandas |
-| Transform | `src/data_pipeline/transform.py` | Renames columns, repairs the swapped reporter header in `data1.xlsx`, maps country names between sources, builds `partner_trade_energy` |
+| Transform | `src/data_pipeline/transform.py` | Renames columns, repairs the swapped reporter header in `data1.xlsx`, maps country names between sources, builds `partner_trade_energy` and `country_wind_imports` |
 | Validate | `src/data_pipeline/validate.py` | Pandera schemas: types, allowed values, ranges, uniqueness. Drops exact duplicates; rejects bad rows to `data/interim/` |
 | Load | `src/data_pipeline/load.py` | SQLAlchemy tables with primary and foreign keys; replaces contents in one transaction and records before/after counts and checksums |
 | Report | `src/data_pipeline/quality.py` | Builds the quality report |

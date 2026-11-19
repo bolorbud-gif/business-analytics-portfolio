@@ -2,7 +2,7 @@
 
 Generated automatically by `scripts/run_pipeline.py`. Do not edit by hand.
 
-- **Run started:** 2026-11-18T21:12:26
+- **Run started:** 2026-11-18T21:54:15
 - **Status:** SUCCESS
 - **Raw data:** `data/sample`
 - **Database:** `sqlite:///data/processed/rare_earth_sample.db`
@@ -14,6 +14,7 @@ Generated automatically by `scripts/run_pipeline.py`. Do not edit by hand.
 | `trade_flows` | data1.xlsx | 49 | 1 | 1 | 2 | 46 |
 | `electricity_generation` | data2.xlsx | 231 | 0 | 0 | 1 | 230 |
 | `partner_trade_energy` | derived | 46 | 0 | 0 | 0 | 46 |
+| `country_wind_imports` | derived | 24 | 0 | 0 | 0 | 24 |
 
 ## Action taken on bad records
 
@@ -64,6 +65,16 @@ No missing values.
 | renewables_twh | 6 | 13.04% |
 | renewables_share_pct | 6 | 13.04% |
 
+**`country_wind_imports`** (24 rows)
+
+| Column | Missing | % |
+|---|---:|---:|
+| imports_from_china_kg | 2 | 8.33% |
+| import_growth_pct | 11 | 45.83% |
+| wind_generation_twh | 3 | 12.50% |
+| wind_generation_change_twh | 10 | 41.67% |
+| wind_capacity_gw | 3 | 12.50% |
+
 ## Re-runnability check
 
 Each run replaces table contents in one transaction. Row counts and a content
@@ -75,7 +86,9 @@ input, both must be identical.
 | `trade_flows` | 46 | 46 | `0367c6c00e23` | `0367c6c00e23` | Unchanged (no duplicates) |
 | `electricity_generation` | 230 | 230 | `6b0956041732` | `6b0956041732` | Unchanged (no duplicates) |
 | `partner_trade_energy` | 46 | 46 | `a0f809414c80` | `a0f809414c80` | Unchanged (no duplicates) |
+| `country_wind_imports` | 24 | 24 | `958bc81c691a` | `958bc81c691a` | Unchanged (no duplicates) |
 
 ## Notes
 
 - 6 partner_trade_energy row(s) have NULL electricity fields: no electricity data for 1 partner(s) in those years: Peru.
+- country_wind_imports: imports from China recorded for 22 of 24 country-years (years [2022, 2023, 2024]); import growth computed for 13. Other years have no Export rows in data1.xlsx, so they are NULL, not zero.

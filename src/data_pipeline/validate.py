@@ -98,10 +98,28 @@ partner_trade_energy_schema = pa.DataFrameSchema(
     name="partner_trade_energy",
 )
 
+country_wind_imports_schema = pa.DataFrameSchema(
+    {
+        "partner": pa.Column(str),
+        "country": pa.Column(str),
+        "year": pa.Column(int, YEAR_RANGE),
+        "imports_from_china_kg": pa.Column(float, NON_NEGATIVE, nullable=True),
+        "import_growth_pct": pa.Column(float, pa.Check.ge(-100), nullable=True),
+        "wind_generation_twh": pa.Column(float, NON_NEGATIVE, nullable=True),
+        "wind_generation_change_twh": pa.Column(float, nullable=True),
+        "wind_capacity_gw": pa.Column(float, NON_NEGATIVE, nullable=True),
+    },
+    unique=["partner", "year"],
+    strict=True,
+    coerce=True,
+    name="country_wind_imports",
+)
+
 SCHEMAS = {
     "trade_flows": trade_schema,
     "electricity_generation": electricity_schema,
     "partner_trade_energy": partner_trade_energy_schema,
+    "country_wind_imports": country_wind_imports_schema,
 }
 
 

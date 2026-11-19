@@ -150,3 +150,66 @@ def build_partner_trade_energy(
     ]
     logger.info("Built partner_trade_energy: %s rows", len(out))
     return out[columns]
+
+
+def build_country_wind_imports(
+    trade: pd.DataFrame, electricity: pd.DataFrame, report: QualityReport | None = None
+) -> pd.DataFrame:
+    """One row per partner country and year: rare-earth imports from China and wind power.
+
+    - imports_from_china_kg: China's *Export* rows (the partner buys from China). NULL
+      when no export is recorded that year: missing is not the same as zero.
+    - import_growth_pct: (this year - previous year) / previous year * 100. NULL when
+      either year is missing or the previous year is 0.
+    - Wind columns come from electricity_generation where source = "Wind". The change
+      is the source file's own year-on-year column (equal to this year minus last year).
+    China itself is left out: China buying from China is re-imports, not demand.
+    """
+    imports = (
+        trade[trade["trade_flow"] == "Export"]
+        .groupby(["partner", "year"], as_index=False)["quantity"].sum()
+        .rename(columns={"quantity": "imports_from_china_kg"})
+    )
+    partners = sorted(set(trade["partner"]) - {"China"})
+    years = sorted(set(trade["year"]) | set(electricity["year"]))
+    panel = pd.MultiIndex.from_product([partners, years], names=["partner", "year"]).to_frame(
+        index=False
+    )
+    panel = panel.merge(imports, on=["partner", "year"], how="left")
+
+    previous = panel.assign(year=panel["year"] + 1).rename(
+        columns={"imports_from_china_kg": "previous_kg"}
+    )
+    panel = panel.merge(previous, on=["partner", "year"], how="left")
+    kg, prev = panel["imports_from_china_kg"], panel["previous_kg"]
+    panel["import_growth_pct"] = ((kg - prev) / prev * 100).where(prev > 0)
+
+    panel["country"] = panel["partner"].replace(PARTNER_TO_COUNTRY)
+    wind = electricity.loc[
+        electricity["source"] == "Wind",
+        ["country", "year", "generation_twh", "generation_yoy_twh", "capacity_gw"],
+    ].rename(columns={
+        "generation_twh": "wind_generation_twh",
+        "generation_yoy_twh": "wind_generation_change_twh",
+        "capacity_gw": "wind_capacity_gw",
+    })
+    out = panel.merge(wind, on=["country", "year"], how="left")
+
+    if report:
+        report.table("country_wind_imports", "derived").rows_in = len(out)
+        has_kg = out["imports_from_china_kg"].notna()
+        import_years = sorted(int(y) for y in out.loc[has_kg, "year"].unique())
+        report.notes.append(
+            f"country_wind_imports: imports from China recorded for {int(has_kg.sum())} of "
+            f"{len(out)} country-years (years {import_years}); import growth computed for "
+            f"{int(out['import_growth_pct'].notna().sum())}. Other years have no Export rows "
+            f"in data1.xlsx, so they are NULL, not zero."
+        )
+
+    columns = [
+        "partner", "country", "year", "imports_from_china_kg", "import_growth_pct",
+        "wind_generation_twh", "wind_generation_change_twh", "wind_capacity_gw",
+    ]
+    logger.info("Built country_wind_imports: %s rows (%s with imports)",
+                len(out), int(out["imports_from_china_kg"].notna().sum()))
+    return out[columns]

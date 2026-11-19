@@ -2,7 +2,7 @@
 
 Generated automatically by `scripts/run_pipeline.py`. Do not edit by hand.
 
-- **Run started:** 2026-11-18T21:12:19
+- **Run started:** 2026-11-18T21:54:07
 - **Status:** SUCCESS
 - **Raw data:** `data/raw`
 - **Database:** `sqlite:///data/processed/rare_earth.db`
@@ -14,6 +14,7 @@ Generated automatically by `scripts/run_pipeline.py`. Do not edit by hand.
 | `trade_flows` | data1.xlsx | 227 | 1 | 0 | 0 | 227 |
 | `electricity_generation` | data2.xlsx | 6729 | 0 | 0 | 0 | 6729 |
 | `partner_trade_energy` | derived | 227 | 0 | 0 | 0 | 227 |
+| `country_wind_imports` | derived | 432 | 0 | 0 | 0 | 432 |
 
 ## Action taken on bad records
 
@@ -61,6 +62,16 @@ No missing values.
 | renewables_twh | 15 | 6.61% |
 | renewables_share_pct | 15 | 6.61% |
 
+**`country_wind_imports`** (432 rows)
+
+| Column | Missing | % |
+|---|---:|---:|
+| imports_from_china_kg | 312 | 72.22% |
+| import_growth_pct | 380 | 87.96% |
+| wind_generation_twh | 35 | 8.10% |
+| wind_generation_change_twh | 36 | 8.33% |
+| wind_capacity_gw | 42 | 9.72% |
+
 ## Re-runnability check
 
 Each run replaces table contents in one transaction. Row counts and a content
@@ -72,7 +83,9 @@ input, both must be identical.
 | `trade_flows` | 227 | 227 | `7bad92af32de` | `7bad92af32de` | Unchanged (no duplicates) |
 | `electricity_generation` | 6729 | 6729 | `0424f3b57e67` | `0424f3b57e67` | Unchanged (no duplicates) |
 | `partner_trade_energy` | 227 | 227 | `9be0998409ca` | `9be0998409ca` | Unchanged (no duplicates) |
+| `country_wind_imports` | 432 | 432 | `e11e49327bc3` | `e11e49327bc3` | Unchanged (no duplicates) |
 
 ## Notes
 
 - 15 partner_trade_energy row(s) have NULL electricity fields: no electricity data for 8 partner(s) in those years: Korea, Dem. Rep., Lao PDR, Mozambique, Myanmar, Other Asia, nes, Peru, Ukraine, Venezuela.
+- country_wind_imports: imports from China recorded for 120 of 432 country-years (years [2023, 2024]); import growth computed for 52. Other years have no Export rows in data1.xlsx, so they are NULL, not zero.

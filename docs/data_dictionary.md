@@ -94,3 +94,30 @@ Table rules: **Validated** unique on the primary key. Exact duplicates are dropp
 
 Table rules: the row count must equal `trade_flows`; if not, the run stops.
 Unmatched partners are kept rather than dropped, so trade totals stay complete. They're listed in the quality report.
+
+## `country_wind_imports` (derived analysis table)
+
+**Grain:** one partner country in one year: rare-earth imports from China next to that country's wind power.
+**Primary key:** (`partner`, `year`).
+**Source:** built by `build_country_wind_imports()` in
+[`transform.py`](../src/data_pipeline/transform.py) from the *validated* rows of `trade_flows`
+and `electricity_generation`. Also exported to `data/processed/country_wind_imports.csv` (not committed).
+
+Every partner (except China) gets a row for every year in the data, so the table is a complete panel.
+A year with no trade record is NULL, not 0.
+
+| Field | Type | Key | Source | Description | Business rule |
+|---|---|---|---|---|---|
+| partner | VARCHAR | PK | `trade_flows.partner` | Importing country, World Bank naming | `China` excluded (re-imports are not demand) |
+| country | VARCHAR | | derived from `partner` | Same country, Ember naming | Mapped with `PARTNER_TO_COUNTRY` |
+| year | INTEGER | PK | `trade_flows.year` ∪ `electricity_generation.year` | Calendar year | **Validated:** 2000–2030 |
+| imports_from_china_kg | FLOAT | | `trade_flows.quantity` where `trade_flow = 'Export'` | Rare-earth compounds (HS 284690) the country bought from China, kg (sum over products) | China's **exports** are the partner's **imports**. NULL when no export is recorded that year. **Validated:** ≥ 0 |
+| import_growth_pct | FLOAT | | derived | Year-on-year import growth: (this year − previous year) ÷ previous year × 100 | NULL when this year or the previous year is missing, or the previous year is 0. **Validated:** ≥ −100 |
+| wind_generation_twh | FLOAT | | `electricity_generation.generation_twh` where `source = 'Wind'` | Wind electricity generated, TWh | NULL if no electricity data. **Validated:** ≥ 0 |
+| wind_generation_change_twh | FLOAT | | `electricity_generation.generation_yoy_twh` where `source = 'Wind'` | Change in wind generation from the previous year, TWh | Taken from the source file. It equals this year minus last year (checked: 334 of 334 rows), and 2020 is filled from the provider's 2019 figure |
+| wind_capacity_gw | FLOAT | | `electricity_generation.capacity_gw` where `source = 'Wind'` | Installed wind capacity, GW | NULL if not reported. **Validated:** ≥ 0 |
+
+**Data limitation (real data):** `data1.xlsx` contains China's *exports* only for 2023 and 2024.
+The other years hold China's imports instead. So `imports_from_china_kg` is filled for 2023–2024
+only, and `import_growth_pct` for 2024 only (52 countries). Re-downloading `data1.xlsx` with
+exports for every year fills the table automatically on the next run.

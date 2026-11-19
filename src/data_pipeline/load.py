@@ -74,6 +74,18 @@ partner_trade_energy = Table(
     ),
 )
 
+country_wind_imports = Table(
+    "country_wind_imports", metadata,
+    Column("partner", String, primary_key=True),
+    Column("country", String, nullable=False),
+    Column("year", Integer, primary_key=True),
+    Column("imports_from_china_kg", Float),
+    Column("import_growth_pct", Float),
+    Column("wind_generation_twh", Float),
+    Column("wind_generation_change_twh", Float),
+    Column("wind_capacity_gw", Float),
+)
+
 
 def get_engine(url: str, echo: bool = False) -> Engine:
     """Create a SQLAlchemy engine. For SQLite, make sure the folder exists."""
