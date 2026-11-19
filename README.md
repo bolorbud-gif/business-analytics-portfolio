@@ -58,25 +58,36 @@ and [docs/quality_report_sample.md](docs/quality_report_sample.md) (sample). Eac
 row counts, missingness, duplicates, rejected-record counts, the action taken on bad records,
 and a re-runnability check.
 
-### Database tables
+### Database: 3NF tables + analysis views
 
-| Table | One row is… |
+The stored tables are normalized to third normal form ([docs/normalization.md](docs/normalization.md)).
+The analysis outputs are SQL **views**: computed from the tables when queried, so they never go out of date.
+
+| Stored table | One row is… |
 |---|---|
+| `countries` | One country, with its name in each source (`Korea, Rep.` ↔ `South Korea`) and ISO code |
+| `products` | One HS6 product (code, description, unit) |
+| `energy_sources` | One electricity source (Solar, Wind, Total generation, …) |
 | `trade_flows` | China's rare-earth trade with one partner, in one direction, in one year (from `data1.xlsx`) |
 | `electricity_generation` | One country's electricity from one source in one year (from `data2.xlsx`) |
+
+| View | One row is… |
+|---|---|
+| `electricity_generation_detail` | `data2.xlsx` as it was: all 17 columns, with names |
 | `partner_trade_energy` | One trade row plus the partner's power mix that year |
-| `country_wind_imports` | One country in one year: rare-earth imports from China (kg), import growth %, wind generation, wind generation change and wind capacity. Also saved as `data/processed/country_wind_imports.csv` |
-| `trade_wind_merged` | One `data1.xlsx` row (Import or Export) matched to `country_wind_imports` on country + year. Also saved as `data/processed/trade_wind_merged.csv` |
-| `trade_wind_wide` | `trade_wind_merged` with Export and Import side by side: one row per country and year. Also saved as `data/processed/trade_wind_wide.csv` and `trade_wind_wide.xlsx` (one sheet) |
+| `country_wind_imports` | One country in one year: imports from China (kg), import growth %, wind generation, wind change, wind capacity. Exported to `data/processed/country_wind_imports.csv` |
+| `trade_wind_merged` | One `data1.xlsx` row matched to `country_wind_imports` on country + year. Exported to `trade_wind_merged.csv` |
+| `trade_wind_wide` | Export and Import side by side, one row per country-year. Exported to `trade_wind_wide.csv` and `.xlsx` (one sheet) |
 
 ### How it works
 
 | Stage | Module | What it does |
 |---|---|---|
 | Extract | `src/data_pipeline/extract.py` | Reads the Excel files listed in `config/app_config.yaml` with Pandas |
-| Transform | `src/data_pipeline/transform.py` | Renames columns, repairs the swapped reporter header in `data1.xlsx`, maps country names between sources, builds `partner_trade_energy` and `country_wind_imports` |
+| Transform | `src/data_pipeline/transform.py` | Renames columns, repairs the swapped reporter header in `data1.xlsx`, then `normalize()` splits the data into the 3NF tables (checking each dependency first) |
 | Validate | `src/data_pipeline/validate.py` | Pandera schemas: types, allowed values, ranges, uniqueness. Drops exact duplicates; rejects bad rows to `data/interim/` |
-| Load | `src/data_pipeline/load.py` | SQLAlchemy tables with primary and foreign keys; replaces contents in one transaction and records before/after counts and checksums |
+| Load | `src/data_pipeline/load.py` | SQLAlchemy tables with primary and foreign keys; replaces contents in one transaction, refreshes and validates the views, records before/after counts and checksums |
+| Views | `src/data_pipeline/views.py` | SQL for the analysis views |
 | Report | `src/data_pipeline/quality.py` | Builds the quality report |
 | Orchestration | `src/data_pipeline/pipeline.py` | `run_pipeline()`: importable, used by the script, tests and notebooks |
 
@@ -90,6 +101,7 @@ report's *Re-runnability check* table shows the result, and any change is logged
 ### Documentation
 
 - [docs/ERD.md](docs/ERD.md): entity relationship diagram
+- [docs/normalization.md](docs/normalization.md): 1NF / 2NF / 3NF analysis with evidence
 - [docs/data_dictionary.md](docs/data_dictionary.md): every table and field, with type, key, source and business rule
 - [docs/schema.sql](docs/schema.sql): generated `CREATE TABLE` statements
 - [docs/setup.md](docs/setup.md): setup and supplying restricted data

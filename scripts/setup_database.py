@@ -24,6 +24,7 @@ from sqlalchemy.schema import CreateTable  # noqa: E402
 
 from src.data_pipeline import PipelineError, read_config  # noqa: E402
 from src.data_pipeline.load import create_schema, get_engine, metadata  # noqa: E402
+from src.data_pipeline.views import view_ddl  # noqa: E402
 
 
 def write_ddl(path: Path) -> None:
@@ -31,7 +32,10 @@ def write_ddl(path: Path) -> None:
     for table in metadata.sorted_tables:
         sql = str(CreateTable(table).compile(dialect=sqlite.dialect())).strip()
         statements.append("\n".join(line.rstrip() for line in sql.splitlines()) + ";")
+    statements += ["-- View: computed from the tables above, stores nothing\n" + v
+                   for v in view_ddl()]
     header = ("-- Database schema (SQLite), generated from src/data_pipeline/load.py\n"
+              "-- and src/data_pipeline/views.py\n"
               "-- Regenerate: uv run python scripts/setup_database.py --ddl docs/schema.sql\n\n")
     path.write_text(header + "\n\n".join(statements) + "\n", encoding="utf-8")
 

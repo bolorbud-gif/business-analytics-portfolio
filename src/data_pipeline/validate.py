@@ -176,6 +176,26 @@ SCHEMAS = {
 }
 
 
+# Views are checked with the same rules as the tables they replace.
+VIEW_SCHEMAS = {
+    "electricity_generation_detail": electricity_schema,
+    "partner_trade_energy": partner_trade_energy_schema,
+    "country_wind_imports": country_wind_imports_schema,
+    "trade_wind_merged": trade_wind_merged_schema,
+    "trade_wind_wide": trade_wind_wide_schema,
+}
+
+
+def validate_view(name: str, df: pd.DataFrame) -> None:
+    """Check a view's rows. Views are computed from validated data, so any failure
+    means the view logic is wrong: stop the run (the load rolls back)."""
+    try:
+        VIEW_SCHEMAS[name].validate(df, lazy=True)
+    except SchemaErrors as exc:
+        problems = sorted({_reason(r) for _, r in exc.failure_cases.iterrows()})
+        raise PipelineError(f"View {name!r} failed validation: {'; '.join(problems[:5])}") from exc
+
+
 def _reason(row) -> str:
     """Readable rejection reason. Table-wide checks are reported once per column by
     Pandera, so they are labelled by the check only."""

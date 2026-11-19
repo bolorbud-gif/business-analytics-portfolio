@@ -1,11 +1,11 @@
-"""Transform stage: clean column names, fix known data problems, build analysis table."""
+"""Transform stage: clean column names, fix known data problems, normalize to 3NF."""
 
 import logging
 
 import pandas as pd
 
 from src.data_pipeline import PipelineError
-from src.data_pipeline.quality import QualityReport
+from src.data_pipeline.quality import QualityReport, missing_counts
 
 logger = logging.getLogger(__name__)
 
@@ -108,189 +108,116 @@ def transform_electricity(raw: pd.DataFrame, report: QualityReport | None = None
     return df
 
 
-def build_partner_trade_energy(
-    trade: pd.DataFrame, electricity: pd.DataFrame, report: QualityReport | None = None
-) -> pd.DataFrame:
-    """One row per trade_flows row, joined with the partner's power mix that year.
+# --- Normalization (1NF -> 2NF -> 3NF) -----------------------------------------------
+# Columns computed from other columns of the same row (3NF): not stored, recomputed in
+# the electricity_generation_detail view.
+DERIVED_ELECTRICITY_COLUMNS = {
+    "generation_yoy_pct": "generation_yoy_twh / (generation_twh - generation_yoy_twh) * 100",
+    "emissions_yoy_pct": "emissions_yoy_mtco2e / (emissions_mtco2e - emissions_yoy_mtco2e) * 100",
+    "emissions_intensity_g_per_kwh": "emissions_mtco2e / generation_twh * 1000",
+}
 
-    Adds unit value (USD per kg) and the partner's total, wind+solar and renewable
-    generation for the same year. Partners with no electricity data keep NaN.
+
+def _require_dependency(df: pd.DataFrame, determinant: str, dependents: list[str], what: str):
+    """Check that `determinant` decides each dependent column (one value per key).
+
+    Moving a column to its own table (2NF) is only safe if this holds; otherwise data
+    would be lost, so the run stops instead.
     """
-    df = trade.rename(columns={"quantity": "quantity_kg"})  # validated as kg
-    df["country"] = df["partner"].replace(PARTNER_TO_COUNTRY)
-    df["unit_value_usd_per_kg"] = (df["trade_value_kusd"] * 1000 / df["quantity_kg"]).where(
-        df["quantity_kg"] > 0
-    )
-
-    mix = electricity.pivot_table(
-        index=["country", "year"], columns="source", values="generation_twh", aggfunc="sum"
-    )
-    mix = mix.reindex(columns=["Total generation", "Wind and solar", "Renewables"])
-    mix.columns = ["total_generation_twh", "wind_solar_twh", "renewables_twh"]
-    mix["renewables_share_pct"] = mix["renewables_twh"] / mix["total_generation_twh"] * 100
-    mix = mix.reset_index()
-
-    out = df.merge(mix, on=["country", "year"], how="left")
-    unmatched = sorted(out.loc[out["total_generation_twh"].isna(), "partner"].unique())
-    if unmatched:
-        logger.warning("No electricity data for %s partner(s): %s", len(unmatched), unmatched)
-    if report:
-        report.table("partner_trade_energy", "derived").rows_in = len(out)
-        rows = int(out["total_generation_twh"].isna().sum())
-        if unmatched:
-            report.notes.append(
-                f"{rows} partner_trade_energy row(s) have NULL electricity fields: no electricity "
-                f"data for {len(unmatched)} partner(s) in those years: {', '.join(unmatched)}."
+    for col in dependents:
+        n = df.groupby(determinant)[col].nunique(dropna=False)
+        bad = n[n > 1]
+        if len(bad):
+            raise PipelineError(
+                f"Cannot normalize {what}: {col!r} has more than one value for "
+                f"{determinant} {list(bad.index[:5])}"
             )
 
-    columns = [
-        "reporter", "trade_flow", "product_code", "year", "partner", "country",
-        "trade_value_kusd", "quantity_kg", "unit_value_usd_per_kg",
-        "total_generation_twh", "wind_solar_twh", "renewables_twh", "renewables_share_pct",
-    ]
-    logger.info("Built partner_trade_energy: %s rows", len(out))
-    return out[columns]
 
-
-def build_country_wind_imports(
+def normalize(
     trade: pd.DataFrame, electricity: pd.DataFrame, report: QualityReport | None = None
-) -> pd.DataFrame:
-    """One row per partner country and year: rare-earth imports from China and wind power.
+) -> dict[str, pd.DataFrame]:
+    """Split the validated source tables into 3NF tables.
 
-    - imports_from_china_kg: China's *Export* rows (the partner buys from China). NULL
-      when no export is recorded that year: missing is not the same as zero.
-    - import_growth_pct: (this year - previous year) / previous year * 100. NULL when
-      either year is missing or the previous year is 0.
-    - Wind columns come from electricity_generation where source = "Wind". The change
-      is the source file's own year-on-year column (equal to this year minus last year).
-    China itself is left out: China buying from China is re-imports, not demand.
+    2NF (every non-key column depends on the whole key):
+      countries       iso3, area_type depend on the country only, not on country+year+source;
+                      also links the trade naming ("Korea, Rep.") to the Ember naming
+                      ("South Korea") in data instead of in code
+      products        product_description, quantity_unit depend on product_code only
+      energy_sources  is_aggregated depends on source only
+    3NF (no non-key column depends on another non-key column):
+      electricity_generation drops DERIVED_ELECTRICITY_COLUMNS
     """
-    imports = (
-        trade[trade["trade_flow"] == "Export"]
-        .groupby(["partner", "year"], as_index=False)["quantity"].sum()
-        .rename(columns={"quantity": "imports_from_china_kg"})
-    )
-    partners = sorted(set(trade["partner"]) - {"China"})
-    years = sorted(set(trade["year"]) | set(electricity["year"]))
-    panel = pd.MultiIndex.from_product([partners, years], names=["partner", "year"]).to_frame(
-        index=False
-    )
-    panel = panel.merge(imports, on=["partner", "year"], how="left")
+    trade = trade.reset_index(drop=True)
+    electricity = electricity.reset_index(drop=True)
+    _require_dependency(trade, "product_code", ["product_description", "quantity_unit"],
+                        "products")
+    _require_dependency(electricity, "country", ["iso3", "area_type"], "countries")
+    _require_dependency(electricity, "iso3", ["country"], "countries")
+    _require_dependency(electricity, "source", ["is_aggregated"], "energy sources")
 
-    previous = panel.assign(year=panel["year"] + 1).rename(
-        columns={"imports_from_china_kg": "previous_kg"}
-    )
-    panel = panel.merge(previous, on=["partner", "year"], how="left")
-    kg, prev = panel["imports_from_china_kg"], panel["previous_kg"]
-    panel["import_growth_pct"] = ((kg - prev) / prev * 100).where(prev > 0)
+    # countries: one row per real country, with its name in each source
+    ember = electricity[["country", "iso3", "area_type"]].drop_duplicates().set_index("country")
+    rows = []
+    for name in sorted(set(trade["reporter"]) | set(trade["partner"])):
+        mapped = PARTNER_TO_COUNTRY.get(name, name)
+        rows.append({"trade_name": name,
+                     "ember_name": mapped if mapped in ember.index else None})
+    linked = [r["ember_name"] for r in rows if r["ember_name"] is not None]
+    if len(linked) != len(set(linked)):
+        raise PipelineError("Cannot normalize countries: two trade names map to one Ember country")
+    rows += [{"trade_name": None, "ember_name": e} for e in sorted(set(ember.index) - set(linked))]
+    countries = pd.DataFrame(rows, columns=["trade_name", "ember_name"])
+    countries["iso3"] = countries["ember_name"].map(ember["iso3"])
+    countries["area_type"] = countries["ember_name"].map(ember["area_type"])
+    order = countries["trade_name"].fillna(countries["ember_name"]).sort_values().index
+    countries = countries.loc[order].reset_index(drop=True)
+    countries.insert(0, "country_id", range(1, len(countries) + 1))
 
-    panel["country"] = panel["partner"].replace(PARTNER_TO_COUNTRY)
-    wind = electricity.loc[
-        electricity["source"] == "Wind",
-        ["country", "year", "generation_twh", "generation_yoy_twh", "capacity_gw"],
-    ].rename(columns={
-        "generation_twh": "wind_generation_twh",
-        "generation_yoy_twh": "wind_generation_change_twh",
-        "capacity_gw": "wind_capacity_gw",
+    by_trade = countries.dropna(subset=["trade_name"]).set_index("trade_name")["country_id"]
+    by_ember = countries.dropna(subset=["ember_name"]).set_index("ember_name")["country_id"]
+
+    products = (trade[["product_code", "product_description", "quantity_unit"]]
+                .drop_duplicates().sort_values("product_code").reset_index(drop=True))
+    energy_sources = (electricity[["source", "is_aggregated"]]
+                      .drop_duplicates().sort_values("source").reset_index(drop=True))
+
+    trade_facts = pd.DataFrame({
+        "reporter_id": trade["reporter"].map(by_trade),
+        "trade_flow": trade["trade_flow"],
+        "product_code": trade["product_code"],
+        "year": trade["year"],
+        "partner_id": trade["partner"].map(by_trade),
+        "trade_value_kusd": trade["trade_value_kusd"],
+        "quantity": trade["quantity"],
     })
-    out = panel.merge(wind, on=["country", "year"], how="left")
+    electricity_facts = electricity.assign(country_id=electricity["country"].map(by_ember))
+    electricity_facts = electricity_facts[[
+        "country_id", "year", "source", "generation_twh", "generation_yoy_twh",
+        "generation_share_pct", "generation_share_yoy_pp", "capacity_gw", "emissions_mtco2e",
+        "emissions_yoy_mtco2e", "emissions_share_pct",
+    ]]
 
+    tables = {
+        "countries": countries,
+        "products": products,
+        "energy_sources": energy_sources,
+        "trade_flows": trade_facts,
+        "electricity_generation": electricity_facts,
+    }
     if report:
-        report.table("country_wind_imports", "derived").rows_in = len(out)
-        has_kg = out["imports_from_china_kg"].notna()
-        import_years = sorted(int(y) for y in out.loc[has_kg, "year"].unique())
+        for name in ["countries", "products", "energy_sources"]:
+            q = report.table(name, "normalized")
+            q.rows_in = q.rows_valid = len(tables[name])
+        for name in tables:
+            report.table(name).missing = missing_counts(tables[name])
+        both = int((countries["trade_name"].notna() & countries["ember_name"].notna()).sum())
         report.notes.append(
-            f"country_wind_imports: imports from China recorded for {int(has_kg.sum())} of "
-            f"{len(out)} country-years (years {import_years}); import growth computed for "
-            f"{int(out['import_growth_pct'].notna().sum())}. Other years have no Export rows "
-            f"in data1.xlsx, so they are NULL, not zero."
+            f"Normalized to 3NF: {len(countries)} countries ({both} matched across both "
+            f"sources), {len(products)} product(s), {len(energy_sources)} energy sources. "
+            f"Not stored because they are computed from the same row (3NF): "
+            f"{', '.join(DERIVED_ELECTRICITY_COLUMNS)}; recomputed in "
+            f"electricity_generation_detail."
         )
-
-    columns = [
-        "partner", "country", "year", "imports_from_china_kg", "import_growth_pct",
-        "wind_generation_twh", "wind_generation_change_twh", "wind_capacity_gw",
-    ]
-    logger.info("Built country_wind_imports: %s rows (%s with imports)",
-                len(out), int(out["imports_from_china_kg"].notna().sum()))
-    return out[columns]
-
-
-def build_trade_wind_merged(
-    trade: pd.DataFrame, country_wind: pd.DataFrame, report: QualityReport | None = None
-) -> pd.DataFrame:
-    """Every data1.xlsx row (cleaned trade_flows) matched to country_wind_imports on
-    country (partner) and year.
-
-    Inner join: a row is kept when the country-year exists in both. country_wind_imports
-    covers every partner-year except China, so the only rows left out are China's trade
-    with itself (re-imports). If a country-year has several trade rows (e.g. both
-    Export and Import), each keeps its own row with the same wind values.
-    """
-    out = trade.merge(country_wind, on=["partner", "year"], how="inner",
-                      validate="many_to_one")
-    dropped = trade[~trade.set_index(["partner", "year"]).index.isin(
-        out.set_index(["partner", "year"]).index)]
-    if len(out) + len(dropped) != len(trade):
-        raise PipelineError("trade_wind_merged: rows were lost or duplicated in the merge")
-    if report:
-        report.table("trade_wind_merged", "derived").rows_in = len(out)
-        if len(dropped):
-            partners = sorted(dropped["partner"].unique())
-            report.notes.append(
-                f"trade_wind_merged: {len(dropped)} data1.xlsx row(s) not matched to "
-                f"country_wind_imports and left out (partner {', '.join(partners)}: "
-                f"China trading with itself is re-imports)."
-            )
-
-    columns = [
-        "reporter", "trade_flow", "product_code", "product_description", "year", "partner",
-        "country", "trade_value_kusd", "quantity", "quantity_unit",
-        "imports_from_china_kg", "import_growth_pct",
-        "wind_generation_twh", "wind_generation_change_twh", "wind_capacity_gw",
-    ]
-    logger.info("Built trade_wind_merged: %s rows (%s data1 rows left out)",
-                len(out), len(dropped))
-    return out[columns]
-
-
-def build_trade_wind_wide(merged: pd.DataFrame, report: QualityReport | None = None) -> pd.DataFrame:
-    """trade_wind_merged reshaped to one row per country and year, with China's Export
-    and Import side by side instead of on separate rows.
-
-    Seen from the partner country:
-      imports_from_china_*  = China's Export rows (the country buys from China)
-      exports_to_china_*    = China's Import rows (China buys from the country)
-    A direction with no data1 row that year is NULL, not zero.
-    """
-    keys = ["partner", "year"]
-    flows = merged.pivot_table(index=keys, columns="trade_flow",
-                               values=["quantity", "trade_value_kusd"], aggfunc="sum")
-    flows = flows.reindex(columns=pd.MultiIndex.from_product(
-        [["quantity", "trade_value_kusd"], ["Export", "Import"]]))
-    flows.columns = ["imports_from_china_kg", "exports_to_china_kg",
-                     "imports_from_china_value_kusd", "exports_to_china_value_kusd"]
-    wind = merged.groupby(keys)[[
-        "country", "import_growth_pct", "wind_generation_twh",
-        "wind_generation_change_twh", "wind_capacity_gw",
-    ]].first()
-    out = flows.join(wind).reset_index()
-
-    if report:
-        report.table("trade_wind_wide", "derived").rows_in = len(out)
-        has_exp = out["imports_from_china_kg"].notna()
-        has_imp = out["exports_to_china_kg"].notna()
-        report.notes.append(
-            f"trade_wind_wide: {int((has_exp & has_imp).sum())} country-year(s) have both "
-            f"directions, {int((has_exp & ~has_imp).sum())} only imports from China, "
-            f"{int((~has_exp & has_imp).sum())} only exports to China."
-        )
-
-    columns = [
-        "partner", "country", "year",
-        "imports_from_china_kg", "imports_from_china_value_kusd",
-        "exports_to_china_kg", "exports_to_china_value_kusd",
-        "import_growth_pct", "wind_generation_twh", "wind_generation_change_twh",
-        "wind_capacity_gw",
-    ]
-    logger.info("Built trade_wind_wide: %s rows", len(out))
-    return out[columns]
+    logger.info("Normalized: %s", {n: len(t) for n, t in tables.items()})
+    return tables

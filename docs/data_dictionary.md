@@ -1,11 +1,13 @@
 # Data Dictionary
 
-Database: `data/processed/rare_earth.db` (SQLite). Diagram: [ERD.md](ERD.md). SQL: [schema.sql](schema.sql).
-Every rule marked **Validated** is a Pandera check in
-[`src/data_pipeline/validate.py`](../src/data_pipeline/validate.py). Rows that fail one are rejected
-(not loaded) and counted in the [quality report](quality_report.md).
+Database: `data/processed/rare_earth.db` (SQLite). Diagram: [ERD.md](ERD.md).
+Normal forms: [normalization.md](normalization.md). SQL: [schema.sql](schema.sql).
 
-**Key** column: `PK` = part of the primary key, `FK` = part of the foreign key to `trade_flows`.
+- **Stored tables** are in 3NF. **Views** are computed from them and store nothing.
+- **Validated** rules are Pandera checks in [`validate.py`](../src/data_pipeline/validate.py), applied to the
+  source rows *before* normalization. Rows that fail are rejected (not loaded) and counted in the
+  [quality report](quality_report.md). Views are re-checked with the same rules after every load.
+- **Key:** `PK` = primary key (part), `FK` = foreign key (enforced), `UK` = unique.
 
 ## Sources
 
@@ -19,171 +21,158 @@ How to supply the real files: [setup.md](setup.md#supplying-the-real-data).
 
 ---
 
+# Stored tables
+
+## `countries`
+
+**Grain:** one real country. **PK:** `country_id`. **Source:** trade names from `data1.xlsx`
+(reporter and partners), Ember names and codes from `data2.xlsx`, linked by `PARTNER_TO_COUNTRY` in
+[`transform.py`](../src/data_pipeline/transform.py).
+
+| Field | Type | Key | Source | Description | Business rule |
+|---|---|---|---|---|---|
+| country_id | INTEGER | PK | generated | Surrogate id, numbered in name order | Same input gives the same ids (re-run safe) |
+| trade_name | VARCHAR | UK | `data1.xlsx` `Partner` / reporter | World Bank name, e.g. `Korea, Rep.` | NULL for countries with electricity data only |
+| ember_name | VARCHAR | UK | `data2.xlsx` `Area` | Ember name, e.g. `South Korea` | NULL for partners with no electricity data (e.g. Peru) |
+| iso3 | VARCHAR(3) | UK | `data2.xlsx` `ISO 3 code` | ISO 3166 alpha-3 | Was repeated on every electricity row (2NF). **Validated:** 3 capital letters |
+| area_type | VARCHAR | | `data2.xlsx` `Area type` | Area type | Was repeated on every electricity row (2NF) |
+
+Rule: two trade names may not map to the same Ember country; the run stops if they do.
+
+## `products`
+
+**Grain:** one HS6 product. **PK:** `product_code`. **Source:** `data1.xlsx`.
+
+| Field | Type | Key | Source | Description | Business rule |
+|---|---|---|---|---|---|
+| product_code | VARCHAR(6) | PK | `ProductCode` | HS 6-digit code | **Validated:** 6 digits; text, so leading zeros survive |
+| product_description | VARCHAR | | `Product Description` | HS product name | Was repeated on every trade row (2NF). Must be one description per code, or the run stops |
+| quantity_unit | VARCHAR | | `Quantity Unit` | Unit of `trade_flows.quantity` | **Validated:** `kg`. One unit per code, or the run stops |
+
+## `energy_sources`
+
+**Grain:** one electricity source. **PK:** `source`. **Source:** `data2.xlsx`.
+
+| Field | Type | Key | Source | Description | Business rule |
+|---|---|---|---|---|---|
+| source | VARCHAR | PK | `Electricity source` | Solar, Wind, Hydro, …, totals (Total generation, Renewables, Wind and solar, Fossil, Clean) and balances (Net imports, Demand) | |
+| is_aggregated | BOOLEAN | | `Is aggregated source` | True when the source is a sum of others | Was repeated on every electricity row (2NF). Don't add aggregated and base sources together |
+
 ## `trade_flows`
 
 **Grain:** China's trade with one partner, in one direction, for one product and year.
-**Primary key:** (`reporter`, `trade_flow`, `product_code`, `year`, `partner`).
-**Source:** `data1.xlsx`.
+**PK:** (`reporter_id`, `trade_flow`, `product_code`, `year`, `partner_id`). **Source:** `data1.xlsx`.
 
-| Field | Type | Key | Source column | Description | Business rule |
+| Field | Type | Key | Source | Description | Business rule |
 |---|---|---|---|---|---|
-| reporter | VARCHAR | PK | first column (header is the swapped value `China`) | Reporting country | **Validated:** must be `China`. A cell reading `Reporter` (header/cell swap in the source) is **repaired** to `China` |
-| trade_flow | VARCHAR | PK | `TradeFlow` | Direction of trade, seen from China | **Validated:** `Export` or `Import` |
-| product_code | VARCHAR(6) | PK | `ProductCode` | HS 6-digit product code | **Validated:** exactly 6 digits; stored as text so leading zeros survive |
-| product_description | VARCHAR | | `Product Description` | HS product name | Required |
+| reporter_id | INTEGER | PK, FK → countries | first column (header is the swapped value `China`) | Reporting country | **Validated:** must be China. The `Reporter` cell (header/cell swap) is **repaired** |
+| trade_flow | VARCHAR | PK | `TradeFlow` | Direction from China's view: `Export` = China sells, `Import` = China buys | **Validated:** `Export` or `Import` |
+| product_code | VARCHAR(6) | PK, FK → products | `ProductCode` | HS6 code | |
 | year | INTEGER | PK | `Year` | Calendar year | **Validated:** 2000–2030 |
-| partner | VARCHAR | PK | `Partner` | Partner country, World Bank naming | **Validated:** non-empty |
-| trade_value_kusd | FLOAT | | `Trade Value 1000USD` | Trade value, thousand US dollars | **Validated:** ≥ 0 |
-| quantity | FLOAT | | `Quantity` | Quantity traded | **Validated:** ≥ 0 |
-| quantity_unit | VARCHAR | | `Quantity Unit` | Unit of `quantity`, lower-cased | **Validated:** must be `kg`, so quantities are comparable |
+| partner_id | INTEGER | PK, FK → countries | `Partner` | Partner country | **Validated:** name non-empty |
+| trade_value_kusd | FLOAT | | `Trade Value 1000USD` | Trade value, thousand USD | **Validated:** ≥ 0 |
+| quantity | FLOAT | | `Quantity` | Quantity, in `products.quantity_unit` (kg) | **Validated:** ≥ 0 |
 
-Table rules: **Validated** unique on the primary key. Exact duplicate rows are dropped, keeping the first copy.
-Rows sharing a key but with different values are both rejected, because the correct one can't be chosen.
+Rules: **Validated** unique on the key. Exact duplicate rows are dropped, keeping the first copy.
+Rows sharing a key but with different values are both rejected.
 
 ## `electricity_generation`
 
 **Grain:** one country's electricity from one source in one year.
-**Primary key:** (`country`, `year`, `source`).
-**Source:** `data2.xlsx`.
+**PK:** (`country_id`, `year`, `source`). **Source:** `data2.xlsx`.
 
-| Field | Type | Key | Source column | Description | Business rule |
+| Field | Type | Key | Source | Description | Business rule |
 |---|---|---|---|---|---|
-| country | VARCHAR | PK | `Area` | Country, Ember naming | Required |
+| country_id | INTEGER | PK, FK → countries | `Area` | Country | |
 | year | INTEGER | PK | `Year` | Calendar year | **Validated:** 2000–2030 |
-| source | VARCHAR | PK | `Electricity source` | Solar, Wind, Hydro, Coal, Gas, …, plus totals (Total generation, Renewables, Wind and solar, Fossil, Clean) and balances (Net imports, Demand) | Required |
-| iso3 | VARCHAR(3) | | `ISO 3 code` | ISO 3166 alpha-3 code | **Validated:** 3 capital letters |
-| area_type | VARCHAR | | `Area type` | Area type (all rows: country or economy) | Required |
-| is_aggregated | BOOLEAN | | `Is aggregated source` | True when the source is a sum of others (e.g. Renewables) | Don't add aggregated and non-aggregated sources together, or generation is double-counted |
-| generation_twh | FLOAT | | `Generation (TWh)` | Electricity generated, TWh | **Validated:** ≥ 0, except `Net imports` (can be negative) and `Demand` |
-| generation_yoy_twh | FLOAT | | `Generation YoY change (TWh)` | Change from previous year, TWh | Nullable (first year has no prior) |
-| generation_yoy_pct | FLOAT | | `Generation YoY change (%)` | Change from previous year, % | Nullable |
-| generation_share_pct | FLOAT | | `Share of generation (%)` | Share of the country's total generation, % | **Validated:** 0–100, except `Net imports` / `Demand`, which are measured against generation and can be below 0 or above 100 |
+| source | VARCHAR | PK, FK → energy_sources | `Electricity source` | Source | |
+| generation_twh | FLOAT | | `Generation (TWh)` | Generation, TWh | **Validated:** ≥ 0, except Net imports / Demand |
+| generation_yoy_twh | FLOAT | | `Generation YoY change (TWh)` | Change from previous year | Nullable. Kept: 2020 uses the provider's 2019 value |
+| generation_share_pct | FLOAT | | `Share of generation (%)` | Share of the country's total generation | **Validated:** 0–100, except Net imports / Demand |
 | generation_share_yoy_pp | FLOAT | | `Share of generation YoY change (% points)` | Change in share, percentage points | Nullable |
-| capacity_gw | FLOAT | | `Capacity (GW)` | Installed capacity, GW | **Validated:** ≥ 0; nullable (not reported for balances) |
-| emissions_mtco2e | FLOAT | | `Emissions (MtCO2e)` | Emissions, million tonnes CO2-equivalent | **Validated:** ≥ 0; nullable |
-| emissions_yoy_mtco2e | FLOAT | | `Emissions YoY change (MtCO2e)` | Change in emissions from previous year | Nullable |
-| emissions_yoy_pct | FLOAT | | `Emissions YoY change (%)` | Change in emissions, % | Nullable |
-| emissions_share_pct | FLOAT | | `Share of emissions (%)` | Share of the country's power-sector emissions, % | Nullable |
-| emissions_intensity_g_per_kwh | FLOAT | | `Emissions intensity (gCO2e/kWh)` | Emissions per unit generated | **Validated:** ≥ 0; nullable |
+| capacity_gw | FLOAT | | `Capacity (GW)` | Installed capacity | **Validated:** ≥ 0; nullable |
+| emissions_mtco2e | FLOAT | | `Emissions (MtCO2e)` | Emissions, Mt CO2e | **Validated:** ≥ 0; nullable |
+| emissions_yoy_mtco2e | FLOAT | | `Emissions YoY change (MtCO2e)` | Change in emissions | Nullable |
+| emissions_share_pct | FLOAT | | `Share of emissions (%)` | Share of the country's power-sector emissions | Nullable |
 
-Table rules: **Validated** unique on the primary key. Exact duplicates are dropped and conflicting keys rejected, as for `trade_flows`.
+**Not stored (3NF):** `Generation YoY change (%)`, `Emissions YoY change (%)` and
+`Emissions intensity (gCO2e/kWh)` are calculated from other columns of the same row. They are
+recomputed in `electricity_generation_detail`, and match the provider's values in every row.
 
-## `partner_trade_energy` (derived analysis table)
+---
 
-**Grain:** one `trade_flows` row plus that partner's power mix in the same year.
-**Primary key:** (`reporter`, `trade_flow`, `product_code`, `year`, `partner`).
-**Foreign key:** the same five columns → `trade_flows`.
-**Source:** built by `build_partner_trade_energy()` in
-[`transform.py`](../src/data_pipeline/transform.py) from the *validated* rows of the two tables above.
+# Views (computed on read)
 
-| Field | Type | Key | Source | Description | Business rule |
-|---|---|---|---|---|---|
-| reporter | VARCHAR | PK, FK | `trade_flows.reporter` | Reporting country | Must exist in `trade_flows` (FK enforced) |
-| trade_flow | VARCHAR | PK, FK | `trade_flows.trade_flow` | Export or Import | as above |
-| product_code | VARCHAR(6) | PK, FK | `trade_flows.product_code` | HS6 code | as above |
-| year | INTEGER | PK, FK | `trade_flows.year` | Calendar year | as above |
-| partner | VARCHAR | PK, FK | `trade_flows.partner` | Partner, World Bank naming | as above |
-| country | VARCHAR | | derived from `partner` | Partner name in Ember naming | Mapped with `PARTNER_TO_COUNTRY` in `transform.py` (10 names differ, e.g. `Korea, Rep.` → `South Korea`); otherwise unchanged |
-| trade_value_kusd | FLOAT | | `trade_flows.trade_value_kusd` | Trade value, thousand USD | ≥ 0 |
-| quantity_kg | FLOAT | | `trade_flows.quantity` | Quantity, kg | ≥ 0; unit already validated as kg |
-| unit_value_usd_per_kg | FLOAT | | derived | `trade_value_kusd × 1000 ÷ quantity_kg` | NULL when quantity is 0 (no division by zero) |
-| total_generation_twh | FLOAT | | `electricity_generation` where source = `Total generation` | Partner's total generation that year | NULL if the partner has no electricity data that year |
-| wind_solar_twh | FLOAT | | `electricity_generation` where source = `Wind and solar` | Partner's wind + solar generation | NULL if no match |
-| renewables_twh | FLOAT | | `electricity_generation` where source = `Renewables` | Partner's renewable generation | NULL if no match |
-| renewables_share_pct | FLOAT | | derived | `renewables_twh ÷ total_generation_twh × 100` | **Validated:** 0–100; NULL if no match |
+Definitions: [`views.py`](../src/data_pipeline/views.py). Each is validated after every load with the
+rules of the table it replaced. "NULL, not zero" means a value that isn't recorded is left empty, so it never reads as zero.
 
-Table rules: the row count must equal `trade_flows`; if not, the run stops.
-Unmatched partners are kept rather than dropped, so trade totals stay complete. They're listed in the quality report.
+## `electricity_generation_detail`
 
-## `country_wind_imports` (derived analysis table)
+`data2.xlsx` as it was: one row per country, year and source, with **all 17 original columns**.
+`country`, `iso3` and `area_type` come from `countries`, and `is_aggregated` from `energy_sources`.
+13 columns come straight from storage; these 3 are recomputed:
 
-**Grain:** one partner country in one year: rare-earth imports from China next to that country's wind power.
-**Primary key:** (`partner`, `year`).
-**Source:** built by `build_country_wind_imports()` in
-[`transform.py`](../src/data_pipeline/transform.py) from the *validated* rows of `trade_flows`
-and `electricity_generation`. Also exported to `data/processed/country_wind_imports.csv` (not committed).
+| Field | Formula |
+|---|---|
+| generation_yoy_pct | generation_yoy_twh ÷ (generation_twh − generation_yoy_twh) × 100 |
+| emissions_yoy_pct | emissions_yoy_mtco2e ÷ (emissions_mtco2e − emissions_yoy_mtco2e) × 100 |
+| emissions_intensity_g_per_kwh | emissions_mtco2e ÷ generation_twh × 1000 |
 
-Every partner (except China) gets a row for every year in the data, so the table is a complete panel.
-A year with no trade record is NULL, not 0.
+All three are NULL when the divisor is 0.
 
-| Field | Type | Key | Source | Description | Business rule |
-|---|---|---|---|---|---|
-| partner | VARCHAR | PK | `trade_flows.partner` | Importing country, World Bank naming | `China` excluded (re-imports are not demand) |
-| country | VARCHAR | | derived from `partner` | Same country, Ember naming | Mapped with `PARTNER_TO_COUNTRY` |
-| year | INTEGER | PK | `trade_flows.year` ∪ `electricity_generation.year` | Calendar year | **Validated:** 2000–2030 |
-| imports_from_china_kg | FLOAT | | `trade_flows.quantity` where `trade_flow = 'Export'` | Rare-earth compounds (HS 284690) the country bought from China, kg (sum over products) | China's **exports** are the partner's **imports**. NULL when no export is recorded that year. **Validated:** ≥ 0 |
-| import_growth_pct | FLOAT | | derived | Year-on-year import growth: (this year − previous year) ÷ previous year × 100 | NULL when this year or the previous year is missing, or the previous year is 0. **Validated:** ≥ −100 |
-| wind_generation_twh | FLOAT | | `electricity_generation.generation_twh` where `source = 'Wind'` | Wind electricity generated, TWh | NULL if no electricity data. **Validated:** ≥ 0 |
-| wind_generation_change_twh | FLOAT | | `electricity_generation.generation_yoy_twh` where `source = 'Wind'` | Change in wind generation from the previous year, TWh | Taken from the source file. It equals this year minus last year (checked: 334 of 334 rows), and 2020 is filled from the provider's 2019 figure |
-| wind_capacity_gw | FLOAT | | `electricity_generation.capacity_gw` where `source = 'Wind'` | Installed wind capacity, GW | NULL if not reported. **Validated:** ≥ 0 |
+## `partner_trade_energy`
 
-**Data limitation (real data):** `data1.xlsx` contains China's *exports* only for 2023 and 2024.
-The other years hold China's imports instead. So `imports_from_china_kg` is filled for 2023–2024
-only, and `import_growth_pct` for 2024 only (52 countries). Re-downloading `data1.xlsx` with
-exports for every year fills the table automatically on the next run.
+**Grain:** one `trade_flows` row plus the partner's power mix that year (227 rows).
+**Key:** reporter, trade_flow, product_code, year, partner.
 
-## `trade_wind_merged` (derived analysis table)
+| Field | Source / formula | Rule |
+|---|---|---|
+| reporter, trade_flow, product_code, year | `trade_flows` | |
+| partner | `countries.trade_name` | |
+| country | `countries.ember_name`, else trade name | |
+| trade_value_kusd, quantity_kg | `trade_flows` | |
+| unit_value_usd_per_kg | trade_value_kusd × 1000 ÷ quantity | NULL when quantity is 0 |
+| total_generation_twh, wind_solar_twh, renewables_twh | `electricity_generation` for Total generation / Wind and solar / Renewables | NULL if no electricity data for that partner-year |
+| renewables_share_pct | renewables ÷ total × 100 | **Validated:** 0–100 |
 
-**Grain:** one `data1.xlsx` row (one `trade_flows` row) with the matching country-year from `country_wind_imports`.
-**Primary key:** (`reporter`, `trade_flow`, `product_code`, `year`, `partner`).
-**Foreign keys:** those five columns → `trade_flows`; (`partner`, `year`) → `country_wind_imports`.
-**Source:** built by `build_trade_wind_merged()` in [`transform.py`](../src/data_pipeline/transform.py).
-It joins validated `trade_flows` (the cleaned `data1.xlsx`) to `country_wind_imports` on
-**country (`partner`) + year**, an inner join. Also exported to `data/processed/trade_wind_merged.csv` (not committed).
+## `country_wind_imports`
 
-Unlike `country_wind_imports`, this table keeps **both** trade directions (Import and Export rows)
-and the trade value in USD from `data1.xlsx`.
+**Grain:** one partner country (every partner except reporters, i.e. China) × every year (432 rows).
+**Key:** partner, year.
 
-| Field | Type | Key | Source | Description | Business rule |
-|---|---|---|---|---|---|
-| reporter | VARCHAR | PK, FK | `data1.xlsx` first column | Reporting country | **Validated:** `China` |
-| trade_flow | VARCHAR | PK, FK | `data1.xlsx` `TradeFlow` | `Export` = country buys from China; `Import` = China buys from the country | **Validated:** `Export` or `Import` |
-| product_code | VARCHAR(6) | PK, FK | `data1.xlsx` `ProductCode` | HS6 code | **Validated:** 6 digits |
-| product_description | VARCHAR | | `data1.xlsx` `Product Description` | HS product name | Required |
-| year | INTEGER | PK, FK | `data1.xlsx` `Year` | Calendar year (join key) | **Validated:** 2000–2030 |
-| partner | VARCHAR | PK, FK | `data1.xlsx` `Partner` | Country (join key), World Bank naming | **Validated:** not `China` |
-| country | VARCHAR | | `country_wind_imports.country` | Same country, Ember naming | |
-| trade_value_kusd | FLOAT | | `data1.xlsx` `Trade Value 1000USD` | Trade value, thousand USD | **Validated:** ≥ 0 |
-| quantity | FLOAT | | `data1.xlsx` `Quantity` | Quantity traded | **Validated:** ≥ 0 |
-| quantity_unit | VARCHAR | | `data1.xlsx` `Quantity Unit` | Unit | **Validated:** `kg` |
-| imports_from_china_kg | FLOAT | | `country_wind_imports` | Country's imports from China that year, kg | Equals `quantity` on Export rows; NULL on Import rows' years unless an Export exists the same year |
-| import_growth_pct | FLOAT | | `country_wind_imports` | (this year − previous year) ÷ previous year × 100 | Export-to-Export years only; never compares an Import year with an Export year |
-| wind_generation_twh | FLOAT | | `country_wind_imports` | Wind generation, TWh | NULL if no electricity data |
-| wind_generation_change_twh | FLOAT | | `country_wind_imports` | Change from previous year, TWh | NULL if no electricity data |
-| wind_capacity_gw | FLOAT | | `country_wind_imports` | Installed wind capacity, GW | NULL if not reported |
+| Field | Source / formula | Rule |
+|---|---|---|
+| partner, country | `countries` | China excluded: buying from itself is re-imports |
+| year | every year in `trade_flows` or `electricity_generation` | complete panel |
+| imports_from_china_kg | sum of `trade_flows.quantity` where trade_flow = `Export` | China's exports are the partner's imports. NULL, not zero, when not recorded |
+| import_growth_pct | (this year − previous year) ÷ previous year × 100 | NULL if either year is missing or the previous year is 0. **Validated:** ≥ −100 |
+| wind_generation_twh, wind_generation_change_twh, wind_capacity_gw | `electricity_generation` where source = `Wind` (generation, generation_yoy_twh, capacity_gw) | NULL if no data |
 
-Table rules: each `data1.xlsx` row appears **at most once**. The merge checks for many-to-one
-and fails the run if rows are lost or duplicated. The only rows left out are China's trade with
-itself (4 rows in the real data), which `country_wind_imports` excludes; the quality report lists them.
+**Data limitation (real data):** `data1.xlsx` has Export rows only for 2023–2024, so imports are
+filled for those years and growth for 2024 only.
 
-## `trade_wind_wide` (derived analysis table, "one sheet" view)
+## `trade_wind_merged`
 
-**Grain:** one country in one year, with both trade directions **side by side** instead of on separate rows.
-**Primary key:** (`partner`, `year`).
-**Foreign key:** (`partner`, `year`) → `country_wind_imports`.
-**Source:** built by `build_trade_wind_wide()` in [`transform.py`](../src/data_pipeline/transform.py),
-which pivots `trade_wind_merged` on `trade_flow`. Also exported as `data/processed/trade_wind_wide.csv`
-and as a one-sheet Excel file, `data/processed/trade_wind_wide.xlsx` (sheet `trade_wind`). Neither is committed.
+**Grain:** one `data1.xlsx` row matched to `country_wind_imports` on **country + year** (223 rows).
+**Key:** reporter, trade_flow, product_code, year, partner.
 
-Direction names are from the **partner country's** point of view:
+Columns: reporter, trade_flow, product_code, product_description, year, partner, country,
+trade_value_kusd, quantity, quantity_unit (all from `data1.xlsx` via `trade_flows` + `products`),
+then imports_from_china_kg, import_growth_pct, wind_generation_twh, wind_generation_change_twh and
+wind_capacity_gw (from `country_wind_imports`). Both trade directions are kept. The only `data1.xlsx` rows
+left out are China trading with itself (4 rows), and the quality report lists them.
 
-| Field | Type | Key | Source | Description | Business rule |
-|---|---|---|---|---|---|
-| partner | VARCHAR | PK, FK | `trade_wind_merged.partner` | Country, World Bank naming | **Validated:** not `China` |
-| country | VARCHAR | | `trade_wind_merged.country` | Same country, Ember naming | |
-| year | INTEGER | PK, FK | `trade_wind_merged.year` | Calendar year | **Validated:** 2000–2030 |
-| imports_from_china_kg | FLOAT | | `quantity` where `trade_flow = 'Export'` | Rare-earth compounds the country bought from China, kg | NULL if no Export row that year. **Validated:** ≥ 0 |
-| imports_from_china_value_kusd | FLOAT | | `trade_value_kusd` where `trade_flow = 'Export'` | Value of those imports, thousand USD | NULL if no Export row. **Validated:** ≥ 0 |
-| exports_to_china_kg | FLOAT | | `quantity` where `trade_flow = 'Import'` | Rare-earth compounds China bought from the country, kg | NULL if no Import row. **Validated:** ≥ 0 |
-| exports_to_china_value_kusd | FLOAT | | `trade_value_kusd` where `trade_flow = 'Import'` | Value of those exports, thousand USD | NULL if no Import row. **Validated:** ≥ 0 |
-| import_growth_pct | FLOAT | | `trade_wind_merged` | Growth of imports from China: (this year − previous year) ÷ previous year × 100 | As in `country_wind_imports` |
-| wind_generation_twh | FLOAT | | `trade_wind_merged` | Wind generation, TWh | |
-| wind_generation_change_twh | FLOAT | | `trade_wind_merged` | Change from previous year, TWh | |
-| wind_capacity_gw | FLOAT | | `trade_wind_merged` | Installed wind capacity, GW | |
+## `trade_wind_wide`
 
-Table rules: **Validated** every row has at least one direction filled. The row count must equal
-the number of distinct country-years in `trade_wind_merged`; if not, the run stops.
+**Grain:** one country-year with both directions **side by side** (223 rows). **Key:** partner, year.
+Also exported as `data/processed/trade_wind_wide.xlsx` (one sheet, `trade_wind`) and `.csv`.
 
-**Data limitation (real data):** no country-year in `data1.xlsx` has both directions (Import rows
-are 2020–2022 and 2025, Export rows 2023–2024), so each row currently has only one side filled.
-The synthetic sample has both directions per year and shows the side-by-side layout working.
+| Field | Source / formula |
+|---|---|
+| partner, country, year | `trade_wind_merged` |
+| imports_from_china_kg, imports_from_china_value_kusd | quantity / value of the `Export` row (country buys from China) |
+| exports_to_china_kg, exports_to_china_value_kusd | quantity / value of the `Import` row (China buys from the country) |
+| import_growth_pct, wind_generation_twh, wind_generation_change_twh, wind_capacity_gw | `trade_wind_merged` |
+
+**Validated:** every row has at least one direction. In the real data no country-year has both
+directions (Import rows are 2020–2022 and 2025, Export rows 2023–2024); the sample shows both side by side.
