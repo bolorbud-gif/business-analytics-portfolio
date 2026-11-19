@@ -38,10 +38,12 @@ def correlation(df: pd.DataFrame, x: str, y: str, method: str = "spearman") -> d
 
 def correlation_table(df: pd.DataFrame, pairs: list[tuple[str, str]],
                       method: str = "spearman") -> pd.DataFrame:
+    """correlation() for several column pairs, one row each."""
     return pd.DataFrame([correlation(df, x, y, method) for x, y in pairs])
 
 
 def correlation_matrix(df: pd.DataFrame, columns: list[str], method: str = "spearman") -> pd.DataFrame:
+    """Pairwise correlation matrix of the columns (Spearman by default)."""
     return df[columns].corr(method=method)
 
 
@@ -117,3 +119,95 @@ def growth_summary(growth_pct: pd.Series, extreme: float = 500.0) -> dict:
         "extreme_count": int((g.abs() > extreme).sum()),
         "mean_pct": float(g.mean()),
     }
+
+
+# --- Hypothesis tests and assumption checks ----------------------------------------------
+
+def normality_test(values: pd.Series, log: bool = False, alpha: float = 0.05) -> dict:
+    """Shapiro-Wilk test of normality (on log10 values if log=True). Low p = not normal."""
+    v = values.dropna()
+    if log:
+        v = log10_positive(v).dropna()
+    w, p = stats.shapiro(v)
+    return {"test": "Shapiro-Wilk", "scale": "log10" if log else "raw", "n": len(v),
+            "statistic": float(w), "p": float(p), "normal": bool(p >= alpha)}
+
+
+def compare_groups(df: pd.DataFrame, value: str, group: str, order: list | None = None) -> dict:
+    """Kruskal-Wallis test: do the groups' distributions differ? (no normality assumed)"""
+    order = order or sorted(df[group].dropna().unique())
+    samples = [df.loc[df[group] == g, value].dropna() for g in order]
+    h, p = stats.kruskal(*samples)
+    return {"test": "Kruskal-Wallis", "groups": len(order), "n": int(sum(len(s) for s in samples)),
+            "statistic": float(h), "p": float(p),
+            "medians": {str(g): float(s.median()) for g, s in zip(order, samples)}}
+
+
+def paired_change(df: pd.DataFrame, entity: str, period: str, value: str, start, end) -> dict:
+    """Wilcoxon signed-rank test on the change of `value` for entities seen in both periods.
+
+    Tests the log ratio end/start, so a halving and a doubling count equally. Reports the
+    median change in percent and the share of entities whose value fell.
+    """
+    wide = df.pivot_table(index=entity, columns=period, values=value, aggfunc="mean")
+    pair = wide[[start, end]].dropna()
+    pair = pair[(pair > 0).all(axis=1)]
+    ratio = np.log(pair[end] / pair[start])
+    w, p = stats.wilcoxon(ratio)
+    return {"test": "Wilcoxon signed-rank", "n": len(pair), "statistic": float(w), "p": float(p),
+            "median_change_pct": float((np.exp(ratio.median()) - 1) * 100),
+            "share_falling": float((ratio < 0).mean())}
+
+
+def top_share(values, k: int = 5) -> float:
+    """Share of the total held by the k largest values."""
+    v = np.sort(np.asarray(values, dtype=float))[::-1]
+    return float(v[:k].sum() / v.sum())
+
+
+def bootstrap_ci(values, statistic, n_boot: int = 2000, level: float = 0.95, seed: int = 0) -> dict:
+    """Percentile bootstrap confidence interval for any statistic of a 1-D sample."""
+    v = np.asarray(pd.Series(values).dropna(), dtype=float)
+    rng = np.random.default_rng(seed)
+    boots = np.array([statistic(rng.choice(v, len(v), replace=True)) for _ in range(n_boot)])
+    tail = (1 - level) / 2 * 100
+    low, high = np.percentile(boots, [tail, 100 - tail])
+    return {"estimate": float(statistic(v)), "ci_low": float(low), "ci_high": float(high),
+            "level": level, "n_boot": n_boot}
+
+
+def regression_diagnostics(result) -> pd.DataFrame:
+    """Assumption checks for an OLS result: unequal variance, residual normality, collinearity."""
+    from statsmodels.stats.diagnostic import het_breuschpagan
+    from statsmodels.stats.outliers_influence import variance_inflation_factor
+    from statsmodels.stats.stattools import jarque_bera
+
+    exog, names = result.model.exog, result.model.exog_names
+    bp_p = het_breuschpagan(result.resid, exog)[1]
+    jb_p = jarque_bera(result.resid)[1]
+    vifs = {n: variance_inflation_factor(exog, i) for i, n in enumerate(names) if n != "Intercept"}
+    worst = max(vifs, key=vifs.get)
+    rows = [
+        ("Equal variance of residuals", "Breusch-Pagan", bp_p, bp_p >= 0.05,
+         "no heteroskedasticity" if bp_p >= 0.05 else "heteroskedastic: rely on robust SEs"),
+        ("Residuals normally distributed", "Jarque-Bera", jb_p, jb_p >= 0.05,
+         "normal" if jb_p >= 0.05 else "not normal: interpret p-values with care"),
+        ("No multicollinearity", f"max VIF ({worst})", vifs[worst], vifs[worst] < 5,
+         "VIF < 5" if vifs[worst] < 5 else "VIF >= 5: coefficients unstable"),
+    ]
+    return pd.DataFrame(rows, columns=["assumption", "test", "value", "ok", "meaning"])
+
+
+def hypothesis_table(tests: list[dict], alpha: float = 0.05) -> pd.DataFrame:
+    """Collect hypothesis tests and adjust for testing several at once (Holm method).
+
+    Each dict needs: hypothesis, test, statistic, p. A hypothesis is "supported" when
+    its Holm-adjusted p-value is below alpha.
+    """
+    from statsmodels.stats.multitest import multipletests
+
+    df = pd.DataFrame(tests)
+    reject, adjusted, *_ = multipletests(df["p"], alpha=alpha, method="holm")
+    df["p_holm"] = adjusted
+    df["result"] = np.where(reject, "Supported", "Not supported")
+    return df

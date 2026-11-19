@@ -165,6 +165,7 @@ report's *Re-runnability check* table shows the result, and any change is logged
 uv run python scripts/setup_database.py                    # create empty tables only
 uv run python scripts/setup_database.py --ddl docs/schema.sql   # regenerate schema SQL
 uv run python scripts/make_sample_data.py                  # regenerate the synthetic sample
+uv run python scripts/build_api_reference.py               # regenerate docs/api_reference.md
 uv run pytest                                              # run the tests
 ```
 
@@ -172,16 +173,18 @@ uv run pytest                                              # run the tests
 
 **Question:** does the wind build-out drive countries' demand for Chinese rare earths, and how exposed
 are buyers? Start with the [executive summary](docs/executive_summary.md); the full analysis is in
-[docs/eda_findings.md](docs/eda_findings.md).
+[docs/statistical_analysis_report.md](docs/statistical_analysis_report.md).
 
 ![Five countries buy over 80% of China's rare-earth exports](docs/figures/01_concentration.png)
 
-| Step | Where |
+| Deliverable | Where |
 |---|---|
-| Connect to the database and validate data quality (19 checks) | [notebooks/01_data_exploration.ipynb](notebooks/01_data_exploration.ipynb) |
-| Univariate, bivariate and multivariate analysis, 7 charts | [notebooks/02_eda_analysis.ipynb](notebooks/02_eda_analysis.ipynb) |
-| Reusable analysis functions | `src/analysis/exploratory.py` (load, check, describe), `statistical.py` (correlation, partial correlation, regression), `charts.py` (figures) |
-| Findings and modeling implications | [docs/eda_findings.md](docs/eda_findings.md) |
+| Modular EDA Python package | [`src/analysis/`](src/analysis/): `exploratory.py` (connect, 19 quality checks, describe, concentration), `statistical.py` (correlation, partial correlation, regression, hypothesis tests, diagnostics), `charts.py` (visualization suite). Function reference: [docs/api_reference.md](docs/api_reference.md) |
+| Statistical analysis report with business insights | [docs/statistical_analysis_report.md](docs/statistical_analysis_report.md) |
+| Visualization suite (Matplotlib + Seaborn) | 9 figures in [`docs/figures/`](docs/figures/), indexed in the report's appendix |
+| Statistical testing and hypothesis validation | 5 hypotheses with Holm correction, normality tests, bootstrap CI and regression diagnostics: notebook 02, section 4, and report section 7 |
+| Data-quality validation | [notebooks/01_data_exploration.ipynb](notebooks/01_data_exploration.ipynb) |
+| Univariate, bivariate, multivariate analysis | [notebooks/02_eda_analysis.ipynb](notebooks/02_eda_analysis.ipynb) |
 | Executive summary | [docs/executive_summary.md](docs/executive_summary.md) |
 
 Re-run the notebooks after rebuilding the database. Without the real data they fall back to the

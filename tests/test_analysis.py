@@ -172,3 +172,90 @@ def test_charts_render_and_save(tmp_path):
         path = ch.save(fig, name, tmp_path)
         assert path.exists() and path.stat().st_size > 5000
         ch.plt.close(fig)
+
+
+# --- Hypothesis tests and diagnostics -----------------------------------------------------
+
+def test_normality_test_detects_skew_and_log_normality():
+    v = pd.Series(10 ** np.random.default_rng(3).normal(3, 1, 300))  # log-normal
+    assert not st.normality_test(v)["normal"]
+    assert st.normality_test(v, log=True)["normal"]
+
+
+def test_compare_groups_finds_a_real_difference():
+    rng = np.random.default_rng(4)
+    df = pd.DataFrame({"g": ["a"] * 50 + ["b"] * 50,
+                       "v": np.r_[rng.normal(0, 1, 50), rng.normal(3, 1, 50)]})
+    out = st.compare_groups(df, "v", "g")
+    assert out["p"] < 0.001 and out["medians"]["b"] > out["medians"]["a"]
+
+
+def test_paired_change_on_log_ratio():
+    df = pd.DataFrame({"who": list("abcdefgh") * 2, "year": [1] * 8 + [2] * 8,
+                       "price": [10.0] * 8 + [5.0, 5, 5, 5, 5, 5, 5, 20]})
+    out = st.paired_change(df, "who", "year", "price", 1, 2)
+    assert out["n"] == 8
+    assert out["median_change_pct"] == pytest.approx(-50.0)
+    assert out["share_falling"] == pytest.approx(7 / 8)
+
+
+def test_bootstrap_ci_brackets_the_estimate():
+    values = np.random.default_rng(5).lognormal(0, 1, 60)
+    ci = st.bootstrap_ci(values, st.top_share, n_boot=500)
+    assert ci["ci_low"] <= ci["estimate"] <= ci["ci_high"]
+    assert st.top_share([5, 3, 1, 1], k=2) == pytest.approx(0.8)
+
+
+def test_regression_diagnostics_flag_collinearity():
+    df = confounded()
+    df["noise"] = 10 ** np.random.default_rng(7).normal(0, 1, len(df))  # independent of z
+    clean = st.regression_diagnostics(st.fit_log_ols(df, "y", ["z", "noise"])).set_index("assumption")
+    assert clean.loc["No multicollinearity", "ok"]
+    # x is built from z, so y ~ x + z is already somewhat collinear (VIF about 6) ...
+    built = st.regression_diagnostics(st.fit_log_ols(df, "y", ["x", "z"])).set_index("assumption")
+    assert built.loc["No multicollinearity", "value"] > 5
+    df["x_copy"] = df["x"] * np.exp(np.random.default_rng(6).normal(0, 0.001, len(df)))
+    collinear = st.regression_diagnostics(st.fit_log_ols(df, "y", ["x", "x_copy"]))  # ... a copy is extreme
+    assert not collinear.set_index("assumption").loc["No multicollinearity", "ok"]
+
+
+def test_hypothesis_table_applies_holm_correction():
+    table = st.hypothesis_table([
+        {"hypothesis": "A", "test": "t", "statistic": 1, "p": 0.01},
+        {"hypothesis": "B", "test": "t", "statistic": 1, "p": 0.04},
+        {"hypothesis": "C", "test": "t", "statistic": 1, "p": 0.30},
+    ])
+    assert table["p_holm"].tolist() == pytest.approx([0.03, 0.08, 0.30])
+    assert table["result"].tolist() == ["Supported", "Not supported", "Not supported"]
+
+
+def test_seaborn_charts_render(tmp_path):
+    df = confounded(90)
+    df["size"] = pd.qcut(df["z"], 3, labels=["Small", "Medium", "Large"])
+    pair = ch.pair_plot(df, ["x", "y", "z"], ["X", "Y", "Z"], "size", ["Small", "Medium", "Large"],
+                        "t", "s", "src")
+    tidy = st.tidy_coefficients(st.fit_log_ols(df, "y", ["x", "z"]))
+    coef = ch.coefficient_plot({"model": tidy}, {"log_x": "X", "log_z": "Z"}, "t", "s", "src")
+    for name, fig in {"pair": pair, "coef": coef}.items():
+        assert ch.save(fig, name, tmp_path).stat().st_size > 5000
+        ch.plt.close(fig)
+
+
+# --- Package and documentation -------------------------------------------------------------
+
+def test_package_exposes_its_modules():
+    import src.analysis as pkg
+    assert set(pkg.__all__) == {"charts", "exploratory", "statistical"}
+
+
+def test_api_reference_lists_every_public_function():
+    import importlib
+    import sys
+    sys.path.insert(0, str(ROOT / "scripts"))
+    builder = importlib.import_module("build_api_reference")
+    doc = (ROOT / "docs" / "api_reference.md").read_text(encoding="utf-8")
+    for package, modules in builder.PACKAGES.items():
+        for mod in modules:
+            module = importlib.import_module(f"{package}.{mod}")
+            for name, _ in builder.public_members(module):
+                assert f"**`{name}`**" in doc, f"{package}.{mod}.{name} missing: run build_api_reference.py"

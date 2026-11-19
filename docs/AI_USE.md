@@ -26,8 +26,9 @@
   imports from China, the growth formula ((this year − previous year) ÷ previous year ×
   100), wind generation, change and capacity, the merge on country and year, and the
   one-sheet layout. I chose to measure imports as countries buying from China.
-- **Assignment 5 (Exploratory analysis):** Used Claude Code to write the analysis functions
-  (`src/analysis/`), the two notebooks, the seven charts, the findings document and the
+- **Assignment 5 (Exploratory analysis):** Used Claude Code to write the analysis package
+  (`src/analysis/`), the two notebooks, the nine Matplotlib/Seaborn charts, the hypothesis tests
+  and regression diagnostics, the statistical analysis report, the API reference and the
   executive summary from the Assignment 5 brief, working against my Assignment 4 database.
 
 ## Where I deliberately did not use it
@@ -46,10 +47,13 @@
   which the data can't support: the buying and selling rows come from different years. The title
   was corrected. One notebook cell also crashed on the synthetic sample (it assumed China was in
   the data) until it was fixed.
+- It first summarised the 2024 data as "prices fell sharply" (the aggregate unit value fell 30%).
+  A paired per-buyer test showed the typical buyer's price fell only about 11%, not significantly,
+  so most of the drop was a mix effect. The summary and report were corrected.
 
 ## Verification
 
 - I checked Japan's 2024 import growth by hand (63.0%), ran the pipeline twice to confirm
-  nothing changed, and reviewed the quality report. 43 automated tests cover the pipeline
+  nothing changed, and reviewed the quality report. 52 automated tests cover the pipeline
   and the analysis functions.
 - I compile all of my work in one folder and save its version history in Google Drive.

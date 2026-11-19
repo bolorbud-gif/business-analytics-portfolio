@@ -1,4 +1,4 @@
-"""Charts for the exploratory analysis.
+"""Charts for the exploratory analysis (Matplotlib + Seaborn).
 
 One style for every figure: light surface, recessive grid and axes, thin marks, at most
 three categorical colors per chart (blue, orange, aqua: validated as distinguishable for
@@ -11,6 +11,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.ticker import FuncFormatter
 
@@ -24,18 +25,22 @@ SERIES = [BLUE, ORANGE, AQUA]  # fixed order; never more than three series in on
 DIVERGING = LinearSegmentedColormap.from_list("blue_gray_red", [RED, NEUTRAL, BLUE])
 
 
+RC = {
+    "figure.facecolor": SURFACE, "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE,
+    "font.family": "sans-serif", "font.sans-serif": ["Segoe UI", "DejaVu Sans", "Arial"],
+    "font.size": 10, "text.color": INK, "axes.labelcolor": INK_2,
+    "axes.edgecolor": AXIS, "axes.linewidth": 0.8,
+    "axes.spines.top": False, "axes.spines.right": False,
+    "axes.grid": True, "grid.color": GRID, "grid.linewidth": 0.6,
+    "xtick.color": MUTED, "ytick.color": MUTED, "xtick.labelcolor": INK_2,
+    "ytick.labelcolor": INK_2, "lines.linewidth": 2, "legend.frameon": False,
+    "axes.axisbelow": True,
+}
+
+
 def apply_style() -> None:
-    plt.rcParams.update({
-        "figure.facecolor": SURFACE, "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE,
-        "font.family": "sans-serif", "font.sans-serif": ["Segoe UI", "DejaVu Sans", "Arial"],
-        "font.size": 10, "text.color": INK, "axes.labelcolor": INK_2,
-        "axes.edgecolor": AXIS, "axes.linewidth": 0.8,
-        "axes.spines.top": False, "axes.spines.right": False,
-        "axes.grid": True, "grid.color": GRID, "grid.linewidth": 0.6,
-        "xtick.color": MUTED, "ytick.color": MUTED, "xtick.labelcolor": INK_2,
-        "ytick.labelcolor": INK_2, "lines.linewidth": 2, "legend.frameon": False,
-        "axes.axisbelow": True,
-    })
+    """Seaborn theme with the project's colours and recessive grid (applies to Matplotlib too)."""
+    sns.set_theme(style="white", palette=SERIES, rc=RC)
 
 
 def _compact(value, _pos=None) -> str:
@@ -63,6 +68,7 @@ def _source(fig, text: str) -> None:
 
 
 def save(fig, name: str, folder: Path = FIGURES) -> Path:
+    """Save a figure as PNG (150 dpi) in docs/figures/ or another folder; returns the path."""
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{name}.png"
     fig.savefig(path, dpi=150, bbox_inches="tight")
@@ -171,28 +177,21 @@ def confounding_scatter(raw: pd.DataFrame, x: str, y: str, group: str, group_ord
 
 def correlation_heatmap(matrix: pd.DataFrame, labels: list[str], title: str, subtitle: str,
                         source: str):
-    """Correlation matrix on a blue (positive) / gray (zero) / red (negative) scale."""
+    """Correlation matrix (lower triangle) on a blue (positive) / gray (zero) / red scale."""
     apply_style()
     n = len(matrix)
+    m = pd.DataFrame(matrix.values, index=labels, columns=labels)
+    mask = ~np.tril(np.ones((n, n), dtype=bool), k=-1)  # each pair once, no diagonal of 1s
+    text = m.map(lambda v: f"{v + 0.0:.2f}".replace("-0.00", "0.00"))
     fig, ax = plt.subplots(figsize=(1.0 * n + 3.2, 0.75 * n + 2.2))
+    sns.heatmap(m.iloc[1:, :-1], mask=mask[1:, :-1], annot=text.iloc[1:, :-1], fmt="",
+                cmap=DIVERGING, vmin=-1, vmax=1, linewidths=2, linecolor=SURFACE,
+                annot_kws={"fontsize": 9.5, "color": INK},
+                cbar_kws={"label": "Spearman correlation", "fraction": 0.04, "pad": 0.02}, ax=ax)
     ax.grid(False)
-    lower = np.tril(np.ones((n, n), dtype=bool), k=-1)  # each pair once, no diagonal of 1s
-    shown = np.where(lower, matrix.values, np.nan)
-    im = ax.imshow(shown, cmap=DIVERGING, vmin=-1, vmax=1)
-    for i in range(n):
-        for j in range(n):
-            if lower[i, j]:
-                ax.text(j, i, f"{matrix.values[i, j] + 0.0:.2f}".replace("-0.00", "0.00"), ha="center", va="center",
-                        fontsize=9.5, color=INK)
-    ax.set_xticks(range(n - 1), labels[:-1], rotation=35, ha="right")
-    ax.set_yticks(range(1, n), labels[1:])
-    ax.set_xlim(-0.5, n - 1.5)
-    ax.set_ylim(n - 0.5, 0.5)
-    for spine in ax.spines.values():
-        spine.set_visible(False)
-    cbar = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
-    cbar.set_label("Spearman correlation", color=INK_2)
-    cbar.outline.set_visible(False)
+    ax.tick_params(length=0)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=35, ha="right")
+    ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
     _titles(fig, title, subtitle)
     _source(fig, source)
     fig.tight_layout(rect=(0, 0.03, 1, 0.9))
@@ -205,15 +204,16 @@ def log_histogram(values: pd.Series, xlabel: str, title: str, subtitle: str, sou
     apply_style()
     v = values[values > 0].dropna()
     fig, ax = plt.subplots(figsize=(8, 3.8))
-    edges = np.logspace(np.log10(v.min()), np.log10(v.max()), bins + 1)
-    ax.hist(v, bins=edges, color=BLUE, edgecolor=SURFACE, linewidth=1.5)
-    _log_axis(ax, "x")
+    sns.histplot(v, bins=bins, log_scale=True, color=BLUE, edgecolor=SURFACE, linewidth=1.5,
+                 alpha=1, ax=ax)
+    ax.xaxis.set_major_formatter(FuncFormatter(_compact))
     ax.axvline(v.median(), color=INK_2, linewidth=1.2, linestyle="--")
     ax.annotate(f"median {v.median():,.0f}", (v.median(), ax.get_ylim()[1] * 0.92),
                 xytext=(6, 0), textcoords="offset points", fontsize=9, color=INK_2)
     ax.set_xlabel(xlabel)
     ax.set_ylabel("Countries")
-    ax.grid(axis="x", visible=False)
+    ax.xaxis.grid(False)
+    ax.yaxis.grid(True)
     _titles(fig, title, subtitle)
     _source(fig, source)
     fig.tight_layout(rect=(0, 0.03, 1, 0.86))
@@ -224,22 +224,83 @@ def group_strip(df: pd.DataFrame, value: str, group: str, order: list[str], ylab
                 title: str, subtitle: str, source: str, tick_labels: list[str] | None = None):
     """Every observation per group on a log scale, with the median marked."""
     apply_style()
+    d = df[df[value] > 0]
     fig, ax = plt.subplots(figsize=(7, 4))
-    rng = np.random.default_rng(0)
-    for i, (name, color) in enumerate(zip(order, SERIES)):
-        v = df.loc[df[group] == name, value].dropna()
-        v = v[v > 0]
-        ax.scatter(i + rng.uniform(-0.18, 0.18, len(v)), v, s=36, color=color,
-                   edgecolor=SURFACE, linewidth=0.8, alpha=0.85, zorder=3)
-        ax.hlines(v.median(), i - 0.3, i + 0.3, color=INK, linewidth=2, zorder=4)
-        ax.annotate(f"median ${v.median():,.0f}/kg", (i + 0.32, v.median()), va="center",
-                    fontsize=9, color=INK_2)
+    sns.stripplot(data=d, x=group, y=value, hue=group, order=order, hue_order=order,
+                  palette=SERIES[:len(order)], size=6, jitter=0.18, edgecolor=SURFACE,
+                  linewidth=0.8, alpha=0.85, legend=False, ax=ax)
+    for i, name in enumerate(order):
+        med = d.loc[d[group] == name, value].median()
+        ax.hlines(med, i - 0.3, i + 0.3, color=INK, linewidth=2, zorder=4)
+        ax.annotate(f"median ${med:,.0f}/kg", (i + 0.32, med), va="center", fontsize=9,
+                    color=INK_2)
     _log_axis(ax, "y")
     ax.set_xticks(range(len(order)), tick_labels or order)
     ax.set_xlim(-0.6, len(order) - 0.1 + 0.6)
+    ax.set_xlabel("")
     ax.set_ylabel(ylabel)
-    ax.grid(axis="x", visible=False)
+    ax.xaxis.grid(False)
+    ax.yaxis.grid(True)
     _titles(fig, title, subtitle)
     _source(fig, source)
     fig.tight_layout(rect=(0, 0.03, 1, 0.86))
+    return fig
+
+
+def pair_plot(df: pd.DataFrame, columns: list[str], labels: list[str], hue: str,
+              hue_order: list[str], title: str, subtitle: str, source: str):
+    """Seaborn pair plot of log10 values: every pairwise relationship at once, coloured by group."""
+    apply_style()
+    d = df[columns].apply(lambda s: np.log10(s.where(s > 0))).rename(columns=dict(zip(columns, labels)))
+    d[hue] = df[hue].astype(str)
+    grid = sns.pairplot(d.dropna(), hue=hue, hue_order=hue_order, palette=SERIES[:len(hue_order)],
+                        corner=True, height=2.1, diag_kind="kde",
+                        plot_kws={"s": 28, "edgecolor": SURFACE, "linewidth": 0.6, "alpha": 0.85},
+                        diag_kws={"fill": True, "alpha": 0.3, "linewidth": 1.5})
+    grid.figure.set_facecolor(SURFACE)
+    for ax in grid.axes.flat:
+        if ax is not None:
+            ax.grid(True, color=GRID, linewidth=0.5)
+    sns.move_legend(grid, "upper right", bbox_to_anchor=(0.92, 0.82), title="Country size",
+                    frameon=False)
+    grid.figure.subplots_adjust(top=0.86, bottom=0.1, left=0.09)
+    grid.figure.suptitle(title, x=0.01, y=0.985, ha="left", fontsize=13, fontweight="bold",
+                         color=INK)
+    grid.figure.text(0.01, 0.945, subtitle, ha="left", va="top", fontsize=9.5, color=INK_2)
+    _source(grid.figure, source)
+    return grid.figure
+
+
+def coefficient_plot(models: dict[str, pd.DataFrame], terms: dict[str, str], title: str,
+                     subtitle: str, source: str, xlabel: str = "Elasticity (95% CI)"):
+    """Estimates with 95% intervals for selected terms, one colour per model.
+
+    models: {model name: output of statistical.tidy_coefficients}; terms: {term: label}.
+    """
+    apply_style()
+    fig, ax = plt.subplots(figsize=(8, 1.0 * len(terms) + 1.9))
+    labels = list(terms.values())
+    offsets = np.linspace(-0.12, 0.12, len(models)) if len(models) > 1 else [0]
+    for (name, tidy), color, off in zip(models.items(), SERIES, offsets):
+        for i, term in enumerate(terms):
+            if term not in tidy.index:
+                continue
+            row = tidy.loc[term]
+            y = len(terms) - 1 - i - off
+            ax.plot([row["ci_low"], row["ci_high"]], [y, y], color=color, linewidth=2)
+            ax.scatter(row["coef"], y, s=64, color=color, edgecolor=SURFACE, linewidth=1.5,
+                       zorder=3, label=name if i == 0 or term == list(terms)[0] else None)
+            ax.annotate(f"{row['coef']:.2f}", (row["ci_high"], y), xytext=(6, 0),
+                        textcoords="offset points", va="center", fontsize=9, color=INK_2)
+    ax.axvline(0, color=AXIS, linewidth=1.2)
+    ax.set_yticks(range(len(terms)), labels[::-1])
+    ax.set_xlabel(xlabel)
+    ax.grid(axis="y", visible=False)
+    handles, names = ax.get_legend_handles_labels()
+    seen = dict(zip(names, handles))
+    ax.legend(seen.values(), seen.keys(), loc="upper right")
+    ax.set_ylim(-0.6, len(terms) - 0.4)
+    _titles(fig, title, subtitle)
+    _source(fig, source)
+    fig.tight_layout(rect=(0, 0.04, 1, 0.84))
     return fig
