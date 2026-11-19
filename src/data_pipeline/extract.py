@@ -14,7 +14,10 @@ def read_excel(path: Path) -> pd.DataFrame:
     """Read the first sheet of an Excel file, with a clear error if it is missing."""
     path = Path(path)
     if not path.exists():
-        raise PipelineError(f"Raw data file not found: {path}")
+        raise PipelineError(
+            f"Raw data file not found: {path}. Real data is not in the repository: see "
+            "docs/setup.md (Supplying the real data), or run with --sample."
+        )
     try:
         df = pd.read_excel(path, sheet_name=0)
     except Exception as exc:  # corrupt file, wrong format, file open in Excel, ...
