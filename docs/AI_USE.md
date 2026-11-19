@@ -1,6 +1,6 @@
 # AI Tool Use
 
-*Last updated: 2026-09-27*
+*Last updated: 2026-11-18*
 
 ## Tools used
 
@@ -19,6 +19,13 @@
 - **Portfolio repository setup:** Used Claude Code to check the required folder
   structure, rename the notebooks, update `.gitignore`, add the MIT license, and commit
   the proposal to GitHub.
+- **Assignment 4 (Data pipeline, rare-earth trade and wind power):** Used Claude Code to
+  build the ETL pipeline (Pandas, SQLAlchemy, SQLite), Pandera validation, the quality
+  report and re-run check, the synthetic sample, the ERD, the data dictionary and the 3NF
+  normalization. I chose the topic and data sources and specified the analysis tables:
+  imports from China, the growth formula ((this year − previous year) ÷ previous year ×
+  100), wind generation, change and capacity, the merge on country and year, and the
+  one-sheet layout. I chose to measure imports as countries buying from China.
 
 ## Where I deliberately did not use it
 
@@ -27,9 +34,14 @@
 
 ## Something it got wrong
 
-Even when my instructions were correct, it created duplicate folders and added files
-that were not required.
+- Even when my instructions were correct, it created duplicate folders and added files
+  that were not required.
+- It first stored trade values as REAL (floating point). I caught this with the course's
+  common-mistakes checklist, and it was changed to exact integer dollars. It also suggested
+  opening the database in a way that skipped foreign-key checks.
 
 ## Verification
 
-I compile all of my work in one folder and save its version history in Google Drive.
+- I checked Japan's 2024 import growth by hand (63.0%), ran the pipeline twice to confirm
+  nothing changed, and reviewed the quality report. 25 automated tests cover the pipeline.
+- I compile all of my work in one folder and save its version history in Google Drive.
