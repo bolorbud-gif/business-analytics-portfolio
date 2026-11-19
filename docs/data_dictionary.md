@@ -8,6 +8,8 @@ Normal forms: [normalization.md](normalization.md). SQL: [schema.sql](schema.sql
   source rows *before* normalization. Rows that fail are rejected (not loaded) and counted in the
   [quality report](quality_report.md). Views are re-checked with the same rules after every load.
 - **Key:** `PK` = primary key (part), `FK` = foreign key (enforced), `UK` = unique.
+- **DB CHECK** rules are enforced by SQLite itself, so they also block bad rows written outside the pipeline.
+- In views, `trade_value_kusd` is computed as `trade_value_usd / 1000.0` for display; the stored value is the integer.
 
 ## Sources
 
@@ -66,12 +68,12 @@ Rule: two trade names may not map to the same Ember country; the run stops if th
 | Field | Type | Key | Source | Description | Business rule |
 |---|---|---|---|---|---|
 | reporter_id | INTEGER | PK, FK → countries | first column (header is the swapped value `China`) | Reporting country | **Validated:** must be China. The `Reporter` cell (header/cell swap) is **repaired** |
-| trade_flow | VARCHAR | PK | `TradeFlow` | Direction from China's view: `Export` = China sells, `Import` = China buys | **Validated:** `Export` or `Import` |
+| trade_flow | VARCHAR | PK | `TradeFlow` | Direction from China's view: `Export` = China sells, `Import` = China buys | **Validated** and **DB CHECK:** `Export` or `Import` |
 | product_code | VARCHAR(6) | PK, FK → products | `ProductCode` | HS6 code | |
 | year | INTEGER | PK | `Year` | Calendar year | **Validated:** 2000–2030 |
 | partner_id | INTEGER | PK, FK → countries | `Partner` | Partner country | **Validated:** name non-empty |
-| trade_value_kusd | FLOAT | | `Trade Value 1000USD` | Trade value, thousand USD | **Validated:** ≥ 0 |
-| quantity | FLOAT | | `Quantity` | Quantity, in `products.quantity_unit` (kg) | **Validated:** ≥ 0 |
+| trade_value_usd | BIGINT (integer) | | `Trade Value 1000USD` × 1000 | Trade value in **whole US dollars** | Money is stored as an exact integer, never REAL/float, so sums are exact. **Validated:** source value has at most 3 decimals, so the conversion loses nothing. **DB CHECK:** ≥ 0 |
+| quantity | FLOAT | | `Quantity` | Quantity, in `products.quantity_unit` (kg) | A physical measure, so fractions are fine (e.g. 28.836 kg). **Validated:** ≥ 0. **DB CHECK:** ≥ 0 |
 
 Rules: **Validated** unique on the key. Exact duplicate rows are dropped, keeping the first copy.
 Rows sharing a key but with different values are both rejected.
@@ -90,7 +92,7 @@ Rows sharing a key but with different values are both rejected.
 | generation_yoy_twh | FLOAT | | `Generation YoY change (TWh)` | Change from previous year | Nullable. Kept: 2020 uses the provider's 2019 value |
 | generation_share_pct | FLOAT | | `Share of generation (%)` | Share of the country's total generation | **Validated:** 0–100, except Net imports / Demand |
 | generation_share_yoy_pp | FLOAT | | `Share of generation YoY change (% points)` | Change in share, percentage points | Nullable |
-| capacity_gw | FLOAT | | `Capacity (GW)` | Installed capacity | **Validated:** ≥ 0; nullable |
+| capacity_gw | FLOAT | | `Capacity (GW)` | Installed capacity | **Validated** and **DB CHECK:** ≥ 0; nullable |
 | emissions_mtco2e | FLOAT | | `Emissions (MtCO2e)` | Emissions, Mt CO2e | **Validated:** ≥ 0; nullable |
 | emissions_yoy_mtco2e | FLOAT | | `Emissions YoY change (MtCO2e)` | Change in emissions | Nullable |
 | emissions_share_pct | FLOAT | | `Share of emissions (%)` | Share of the country's power-sector emissions | Nullable |
@@ -130,8 +132,8 @@ All three are NULL when the divisor is 0.
 | reporter, trade_flow, product_code, year | `trade_flows` | |
 | partner | `countries.trade_name` | |
 | country | `countries.ember_name`, else trade name | |
-| trade_value_kusd, quantity_kg | `trade_flows` | |
-| unit_value_usd_per_kg | trade_value_kusd × 1000 ÷ quantity | NULL when quantity is 0 |
+| trade_value_kusd, quantity_kg | `trade_flows.trade_value_usd / 1000.0`, `trade_flows.quantity` | |
+| unit_value_usd_per_kg | trade_value_usd ÷ quantity | NULL when quantity is 0 |
 | total_generation_twh, wind_solar_twh, renewables_twh | `electricity_generation` for Total generation / Wind and solar / Renewables | NULL if no electricity data for that partner-year |
 | renewables_share_pct | renewables ÷ total × 100 | **Validated:** 0–100 |
 

@@ -71,6 +71,22 @@ For authorized users who have their own access to the source data:
    `data/interim/rejected_<table>.csv` with the reason. Fix them at the source if needed, then
    run again.
 
+## Querying the database yourself
+
+Open it with the project's helper, not a bare `sqlite3.connect()`. SQLite turns foreign keys
+off for every new connection unless told otherwise, and the helper turns them on:
+
+```python
+from src.data_pipeline.load import connect
+import pandas as pd
+
+con = connect("data/processed/rare_earth.db")   # from a notebook: "../data/processed/rare_earth.db"
+pd.read_sql("SELECT * FROM trade_wind_wide WHERE year = 2024", con)
+```
+
+Money is stored as whole US dollars in `trade_flows.trade_value_usd` (an exact integer). The
+views show `trade_value_kusd` (thousand USD) for convenience.
+
 ## Re-running and resetting
 
 - **Refresh:** run the same command again. Each table is replaced in one transaction, so

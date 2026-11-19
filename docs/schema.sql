@@ -40,6 +40,7 @@ CREATE TABLE electricity_generation (
 	emissions_yoy_mtco2e FLOAT,
 	emissions_share_pct FLOAT,
 	PRIMARY KEY (country_id, year, source),
+	CONSTRAINT ck_capacity_non_negative CHECK (capacity_gw IS NULL OR capacity_gw >= 0),
 	FOREIGN KEY(country_id) REFERENCES countries (country_id),
 	FOREIGN KEY(source) REFERENCES energy_sources (source)
 );
@@ -50,9 +51,12 @@ CREATE TABLE trade_flows (
 	product_code VARCHAR(6) NOT NULL,
 	year INTEGER NOT NULL,
 	partner_id INTEGER NOT NULL,
-	trade_value_kusd FLOAT NOT NULL,
+	trade_value_usd BIGINT NOT NULL,
 	quantity FLOAT NOT NULL,
 	PRIMARY KEY (reporter_id, trade_flow, product_code, year, partner_id),
+	CONSTRAINT ck_trade_flow CHECK (trade_flow IN ('Export', 'Import')),
+	CONSTRAINT ck_trade_value_non_negative CHECK (trade_value_usd >= 0),
+	CONSTRAINT ck_quantity_non_negative CHECK (quantity >= 0),
 	FOREIGN KEY(reporter_id) REFERENCES countries (country_id),
 	FOREIGN KEY(product_code) REFERENCES products (product_code),
 	FOREIGN KEY(partner_id) REFERENCES countries (country_id)
@@ -78,8 +82,8 @@ JOIN energy_sources s ON s.source = e.source;
 CREATE VIEW partner_trade_energy AS
 SELECT r.trade_name AS reporter, t.trade_flow, t.product_code, t.year,
        p.trade_name AS partner, COALESCE(p.ember_name, p.trade_name) AS country,
-       t.trade_value_kusd, t.quantity AS quantity_kg,
-       t.trade_value_kusd * 1000.0 / NULLIF(t.quantity, 0) AS unit_value_usd_per_kg,
+       t.trade_value_usd / 1000.0 AS trade_value_kusd, t.quantity AS quantity_kg,
+       t.trade_value_usd * 1.0 / NULLIF(t.quantity, 0) AS unit_value_usd_per_kg,
        tot.generation_twh AS total_generation_twh,
        ws.generation_twh AS wind_solar_twh,
        ren.generation_twh AS renewables_twh,
@@ -118,7 +122,8 @@ LEFT JOIN electricity_generation w
 -- View: computed from the tables above, stores nothing
 CREATE VIEW trade_wind_merged AS
 SELECT r.trade_name AS reporter, t.trade_flow, t.product_code, pr.product_description, t.year,
-       cw.partner, cw.country, t.trade_value_kusd, t.quantity, pr.quantity_unit,
+       cw.partner, cw.country, t.trade_value_usd / 1000.0 AS trade_value_kusd, t.quantity,
+       pr.quantity_unit,
        cw.imports_from_china_kg, cw.import_growth_pct, cw.wind_generation_twh,
        cw.wind_generation_change_twh, cw.wind_capacity_gw
 FROM trade_flows t

@@ -188,7 +188,8 @@ def normalize(
         "product_code": trade["product_code"],
         "year": trade["year"],
         "partner_id": trade["partner"].map(by_trade),
-        "trade_value_kusd": trade["trade_value_kusd"],
+        # money as exact integer dollars, never REAL (validated: at most 3 decimals in kUSD)
+        "trade_value_usd": (trade["trade_value_kusd"] * 1000).round().astype("int64"),
         "quantity": trade["quantity"],
     })
     electricity_facts = electricity.assign(country_id=electricity["country"].map(by_ember))

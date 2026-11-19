@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 
 YEAR_RANGE = pa.Check.in_range(2000, 2030)
 NON_NEGATIVE = pa.Check.ge(0)
+# Money is stored as INTEGER whole US dollars, so a value in thousand USD may have at most
+# 3 decimals; anything finer would be rounded away when stored.
+WHOLE_DOLLARS = pa.Check(
+    lambda s: ((s * 1000).round() - s * 1000).abs() < 1e-6,
+    error="trade_value_kusd must have at most 3 decimals (whole US dollars)",
+)
 
 # Sources that are not a share of generation, so their share can be < 0 or > 100.
 BALANCE_SOURCES = {"Net imports", "Demand"}
@@ -27,7 +33,7 @@ trade_schema = pa.DataFrameSchema(
         "product_description": pa.Column(str),
         "year": pa.Column(int, YEAR_RANGE),
         "partner": pa.Column(str, pa.Check.str_length(min_value=1)),
-        "trade_value_kusd": pa.Column(float, NON_NEGATIVE),
+        "trade_value_kusd": pa.Column(float, [NON_NEGATIVE, WHOLE_DOLLARS]),
         "quantity": pa.Column(float, NON_NEGATIVE),
         "quantity_unit": pa.Column(str, pa.Check.isin(["kg"])),
     },

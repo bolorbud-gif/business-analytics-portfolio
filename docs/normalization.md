@@ -93,7 +93,7 @@ These are provider values that depend on **other rows**, not other columns of th
 | `countries` | country_id | trade_name (unique), ember_name (unique), iso3 (unique), area_type |
 | `products` | product_code | product_description, quantity_unit |
 | `energy_sources` | source | is_aggregated |
-| `trade_flows` | reporter_id, trade_flow, product_code, year, partner_id | trade_value_kusd, quantity |
+| `trade_flows` | reporter_id, trade_flow, product_code, year, partner_id | trade_value_usd (integer dollars), quantity |
 | `electricity_generation` | country_id, year, source | generation_twh, generation_yoy_twh, generation_share_pct, generation_share_yoy_pp, capacity_gw, emissions_mtco2e, emissions_yoy_mtco2e, emissions_share_pct |
 
 Foreign keys (enforced): `trade_flows.reporter_id` and `trade_flows.partner_id` → `countries`;

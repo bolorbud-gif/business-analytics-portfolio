@@ -2,7 +2,7 @@
 
 Generated automatically by `scripts/run_pipeline.py`. Do not edit by hand.
 
-- **Run started:** 2026-11-18T23:12:35
+- **Run started:** 2026-11-18T23:19:41
 - **Status:** SUCCESS
 - **Raw data:** `data/raw`
 - **Database:** `sqlite:///data/processed/rare_earth.db`
@@ -136,13 +136,13 @@ input, both must be identical.
 
 | Table | Rows before | Rows after | Checksum before | Checksum after | Result |
 |---|---:|---:|---|---|---|
-| `trade_flows` | 227 | 227 | `0f4d440e1c8c` | `0f4d440e1c8c` | Unchanged (no duplicates) |
+| `trade_flows` | 227 | 227 | `ef78033727bc` | `ef78033727bc` | Unchanged (no duplicates) |
 | `electricity_generation` | 6729 | 6729 | `e8a03d3980ed` | `e8a03d3980ed` | Unchanged (no duplicates) |
 | `countries` | 73 | 73 | `4a176ebaa365` | `4a176ebaa365` | Unchanged (no duplicates) |
 | `products` | 1 | 1 | `c325b6472e82` | `c325b6472e82` | Unchanged (no duplicates) |
 | `energy_sources` | 17 | 17 | `6e8601522c31` | `6e8601522c31` | Unchanged (no duplicates) |
 | `electricity_generation_detail` | 6729 | 6729 | `e1c8ab9ed759` | `e1c8ab9ed759` | Unchanged (no duplicates) |
-| `partner_trade_energy` | 227 | 227 | `9be0998409ca` | `9be0998409ca` | Unchanged (no duplicates) |
+| `partner_trade_energy` | 227 | 227 | `c825714e89d6` | `c825714e89d6` | Unchanged (no duplicates) |
 | `country_wind_imports` | 432 | 432 | `e11e49327bc3` | `e11e49327bc3` | Unchanged (no duplicates) |
 | `trade_wind_merged` | 223 | 223 | `3d6e7d13383d` | `3d6e7d13383d` | Unchanged (no duplicates) |
 | `trade_wind_wide` | 223 | 223 | `30c506681d47` | `30c506681d47` | Unchanged (no duplicates) |

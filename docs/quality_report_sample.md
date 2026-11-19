@@ -2,7 +2,7 @@
 
 Generated automatically by `scripts/run_pipeline.py`. Do not edit by hand.
 
-- **Run started:** 2026-11-18T23:10:50
+- **Run started:** 2026-11-18T23:19:47
 - **Status:** SUCCESS
 - **Raw data:** `data/sample`
 - **Database:** `sqlite:///data/processed/rare_earth_sample.db`
@@ -136,7 +136,7 @@ input, both must be identical.
 
 | Table | Rows before | Rows after | Checksum before | Checksum after | Result |
 |---|---:|---:|---|---|---|
-| `trade_flows` | 46 | 46 | `bba4add86f02` | `bba4add86f02` | Unchanged (no duplicates) |
+| `trade_flows` | 46 | 46 | `a0a8fbcb2ffa` | `a0a8fbcb2ffa` | Unchanged (no duplicates) |
 | `electricity_generation` | 230 | 230 | `9ed9d78dbb90` | `9ed9d78dbb90` | Unchanged (no duplicates) |
 | `countries` | 9 | 9 | `47dce59e3e8b` | `47dce59e3e8b` | Unchanged (no duplicates) |
 | `products` | 1 | 1 | `91d747700a2a` | `91d747700a2a` | Unchanged (no duplicates) |

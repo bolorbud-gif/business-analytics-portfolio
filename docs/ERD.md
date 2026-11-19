@@ -41,7 +41,7 @@ erDiagram
         string product_code PK, FK
         int year PK
         int partner_id PK, FK
-        float trade_value_kusd "thousand USD"
+        bigint trade_value_usd "whole USD, exact integer"
         float quantity "kg"
     }
 
@@ -71,8 +71,12 @@ erDiagram
 | `energy_sources` | `electricity_generation` | 1 : many | **Yes**: FK `source` |
 | `trade_flows` | `electricity_generation` | many : many through `countries` + `year` | Resolved in the views |
 
-SQLite leaves foreign keys off by default; the pipeline turns them on for every connection
-(`PRAGMA foreign_keys = ON`), and the tests check that rows with no matching parent are refused.
+SQLite leaves foreign keys off by default, separately for **every connection**. The pipeline turns them on
+for each of its connections (`PRAGMA foreign_keys = ON`) and runs `PRAGMA foreign_key_check` before
+committing. For your own scripts and notebooks, open the database with
+`src.data_pipeline.load.connect()`, which does the same; a bare `sqlite3.connect()` would
+let orphan rows in. CHECK constraints also block negative money or quantities and unknown trade
+directions at the database level.
 
 ## Analysis views (computed, not stored)
 

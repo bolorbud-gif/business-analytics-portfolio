@@ -1,5 +1,6 @@
 """Tests for the ETL pipeline (src/data_pipeline)."""
 
+import sqlite3
 from pathlib import Path
 
 import pandas as pd
@@ -9,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from src.data_pipeline import PipelineError
 from src.data_pipeline.extract import read_excel
-from src.data_pipeline.load import create_schema, get_engine, load
+from src.data_pipeline.load import connect, create_schema, get_engine, load
 from src.data_pipeline.pipeline import run_pipeline
 from src.data_pipeline.quality import QualityReport
 from src.data_pipeline.transform import normalize, transform_electricity, transform_trade
@@ -295,11 +296,45 @@ def test_foreign_keys_are_enforced(tmp_path):
     with pytest.raises(IntegrityError), engine.begin() as conn:
         conn.execute(text(
             "insert into trade_flows (reporter_id, trade_flow, product_code, year, partner_id, "
-            "trade_value_kusd, quantity) values (1, 'Export', '284690', 2099, 99999, 1, 1)"))
+            "trade_value_usd, quantity) values (1, 'Export', '284690', 2099, 99999, 1, 1)"))
     with pytest.raises(IntegrityError), engine.begin() as conn:
         conn.execute(text(
             "insert into electricity_generation (country_id, year, source, generation_twh, "
             "generation_share_pct) values (1, 2099, 'Unknown source', 1, 1)"))
+
+
+def test_money_is_stored_as_exact_integer_dollars(tmp_path, trade, electricity):
+    tables = normalize(trade, electricity)
+    assert "trade_value_kusd" not in tables["trade_flows"]
+    assert tables["trade_flows"]["trade_value_usd"].dtype == "int64"
+    build(tmp_path, trade, electricity)
+    db = connect(tmp_path / "test.db")
+    assert {r[0] for r in db.execute("select typeof(trade_value_usd) from trade_flows")} == {"integer"}
+    assert db.execute("select sum(trade_value_usd) from trade_flows").fetchone()[0] == 160_000
+
+
+def test_value_finer_than_a_dollar_is_rejected(trade):
+    trade.loc[0, "trade_value_kusd"] = 1.2345  # 1,234.50 USD: cents would be lost
+    report = QualityReport("raw", "db")
+    validate_table("trade_flows", trade, report, max_rejected_pct=100)
+    assert list(report.tables["trade_flows"].rejected_by_reason) == [
+        "trade_value_kusd: trade_value_kusd must have at most 3 decimals (whole US dollars)"]
+
+
+def test_check_constraints_refuse_bad_values(tmp_path):
+    run_sample(tmp_path)
+    db = connect(tmp_path / "sample.db")
+    for values, constraint in [("(1, 'Export', '284690', 2099, 2, -5, 1)", "ck_trade_value"),
+                               ("(1, 'Gift', '284690', 2099, 2, 5, 1)", "ck_trade_flow"),
+                               ("(1, 'Export', '284690', 2099, 2, 5, -1)", "ck_quantity")]:
+        with pytest.raises(sqlite3.IntegrityError, match=constraint):
+            db.execute(f"insert into trade_flows values {values}")
+
+
+def test_connect_helper_turns_foreign_keys_on(tmp_path):
+    run_sample(tmp_path)
+    assert connect(tmp_path / "sample.db").execute("pragma foreign_keys").fetchone()[0] == 1
+    assert sqlite3.connect(tmp_path / "sample.db").execute("pragma foreign_keys").fetchone()[0] == 0
 
 
 def test_analysis_outputs_are_views_not_tables(tmp_path):

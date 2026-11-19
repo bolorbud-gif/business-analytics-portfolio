@@ -2,12 +2,13 @@
 
 import hashlib
 import logging
+import sqlite3
 from pathlib import Path
 
 import pandas as pd
 from sqlalchemy import (
-    Boolean, Column, Connection, Engine, Float, ForeignKey, Integer, MetaData, String, Table,
-    create_engine, event, inspect, text,
+    BigInteger, Boolean, CheckConstraint, Column, Connection, Engine, Float, ForeignKey, Integer,
+    MetaData, String, Table, create_engine, event, inspect, text,
 )
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -51,8 +52,11 @@ trade_flows = Table(
     Column("product_code", String(6), ForeignKey("products.product_code"), primary_key=True),
     Column("year", Integer, primary_key=True),
     Column("partner_id", Integer, ForeignKey("countries.country_id"), primary_key=True),
-    Column("trade_value_kusd", Float, nullable=False),
-    Column("quantity", Float, nullable=False),
+    Column("trade_value_usd", BigInteger, nullable=False),  # whole US dollars: money is never REAL
+    Column("quantity", Float, nullable=False),  # kg, a physical measure
+    CheckConstraint("trade_flow IN ('Export', 'Import')", name="ck_trade_flow"),
+    CheckConstraint("trade_value_usd >= 0", name="ck_trade_value_non_negative"),
+    CheckConstraint("quantity >= 0", name="ck_quantity_non_negative"),
 )
 
 electricity_generation = Table(
@@ -68,6 +72,7 @@ electricity_generation = Table(
     Column("emissions_mtco2e", Float),
     Column("emissions_yoy_mtco2e", Float),
     Column("emissions_share_pct", Float),
+    CheckConstraint("capacity_gw IS NULL OR capacity_gw >= 0", name="ck_capacity_non_negative"),
 )
 
 
@@ -81,6 +86,17 @@ def get_engine(url: str, echo: bool = False) -> Engine:
         def _enable_foreign_keys(dbapi_conn, _):
             dbapi_conn.execute("PRAGMA foreign_keys = ON")  # SQLite leaves FKs off by default
     return engine
+
+
+def connect(db_path) -> sqlite3.Connection:
+    """Open the SQLite file with plain sqlite3 (e.g. in a notebook) with foreign keys ON.
+
+    SQLite turns foreign keys off for every new connection unless told otherwise, so a
+    bare sqlite3.connect() would let writes break them. Use this instead.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
 
 
 def create_schema(engine: Engine, rebuild: bool = False) -> None:
@@ -174,6 +190,10 @@ def load(
                 conn.execute(table.delete())
             for table in ordered:
                 conn.execute(table.insert(), _records(tables[table.name]))
+            if engine.dialect.name == "sqlite":
+                orphans = conn.execute(text("PRAGMA foreign_key_check")).fetchall()
+                if orphans:  # defence in depth: FKs are enforced on insert already
+                    raise PipelineError(f"Foreign key check failed: {orphans[:5]}")
             create_views(conn)
 
             for table in ordered:

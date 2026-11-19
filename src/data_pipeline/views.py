@@ -32,8 +32,8 @@ JOIN energy_sources s ON s.source = e.source
     "partner_trade_energy": (f"""
 SELECT r.trade_name AS reporter, t.trade_flow, t.product_code, t.year,
        p.trade_name AS partner, {COUNTRY.format(t="p")} AS country,
-       t.trade_value_kusd, t.quantity AS quantity_kg,
-       t.trade_value_kusd * 1000.0 / NULLIF(t.quantity, 0) AS unit_value_usd_per_kg,
+       t.trade_value_usd / 1000.0 AS trade_value_kusd, t.quantity AS quantity_kg,
+       t.trade_value_usd * 1.0 / NULLIF(t.quantity, 0) AS unit_value_usd_per_kg,
        tot.generation_twh AS total_generation_twh,
        ws.generation_twh AS wind_solar_twh,
        ren.generation_twh AS renewables_twh,
@@ -75,7 +75,8 @@ LEFT JOIN electricity_generation w
     # Every data1.xlsx row matched to country_wind_imports on country + year.
     "trade_wind_merged": ("""
 SELECT r.trade_name AS reporter, t.trade_flow, t.product_code, pr.product_description, t.year,
-       cw.partner, cw.country, t.trade_value_kusd, t.quantity, pr.quantity_unit,
+       cw.partner, cw.country, t.trade_value_usd / 1000.0 AS trade_value_kusd, t.quantity,
+       pr.quantity_unit,
        cw.imports_from_china_kg, cw.import_growth_pct, cw.wind_generation_twh,
        cw.wind_generation_change_twh, cw.wind_capacity_gw
 FROM trade_flows t
