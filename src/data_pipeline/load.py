@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pandas as pd
 from sqlalchemy import (
-    BigInteger, Boolean, CheckConstraint, Column, Connection, Engine, Float, ForeignKey, Integer,
-    MetaData, String, Table, create_engine, event, inspect, text,
+    BigInteger, Boolean, CheckConstraint, Column, Connection, Engine, Float, ForeignKey, Index,
+    Integer, MetaData, String, Table, create_engine, event, inspect, text,
 )
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -29,6 +29,8 @@ countries = Table(
     Column("ember_name", String, unique=True),   # Ember naming (data2.xlsx)
     Column("iso3", String(3), unique=True),
     Column("area_type", String),
+    CheckConstraint("trade_name IS NOT NULL OR ember_name IS NOT NULL", name="ck_country_has_name"),
+    CheckConstraint("iso3 IS NULL OR length(iso3) = 3", name="ck_iso3_length"),
 )
 
 products = Table(
@@ -36,12 +38,15 @@ products = Table(
     Column("product_code", String(6), primary_key=True),
     Column("product_description", String, nullable=False),
     Column("quantity_unit", String, nullable=False),
+    CheckConstraint("length(product_code) = 6", name="ck_product_code_length"),
+    CheckConstraint("quantity_unit = 'kg'", name="ck_quantity_unit_kg"),
 )
 
 energy_sources = Table(
     "energy_sources", metadata,
     Column("source", String, primary_key=True),
     Column("is_aggregated", Boolean, nullable=False),
+    CheckConstraint("is_aggregated IN (0, 1)", name="ck_is_aggregated_boolean"),
 )
 
 # --- Fact tables ---------------------------------------------------------------------
@@ -57,6 +62,12 @@ trade_flows = Table(
     CheckConstraint("trade_flow IN ('Export', 'Import')", name="ck_trade_flow"),
     CheckConstraint("trade_value_usd >= 0", name="ck_trade_value_non_negative"),
     CheckConstraint("quantity >= 0", name="ck_quantity_non_negative"),
+    CheckConstraint("year BETWEEN 2000 AND 2030", name="ck_trade_year_range"),
+    # Indexes: reporter_id is already the first column of the primary key index, so it
+    # is covered; the other FK columns and the year filter are not.
+    Index("ix_trade_flows_partner_year", "partner_id", "year"),
+    Index("ix_trade_flows_product_code", "product_code"),
+    Index("ix_trade_flows_year", "year"),
 )
 
 electricity_generation = Table(
@@ -73,6 +84,18 @@ electricity_generation = Table(
     Column("emissions_yoy_mtco2e", Float),
     Column("emissions_share_pct", Float),
     CheckConstraint("capacity_gw IS NULL OR capacity_gw >= 0", name="ck_capacity_non_negative"),
+    CheckConstraint("year BETWEEN 2000 AND 2030", name="ck_generation_year_range"),
+    CheckConstraint("emissions_mtco2e IS NULL OR emissions_mtco2e >= 0",
+                    name="ck_emissions_non_negative"),
+    # Net imports can be negative and Demand / Net imports are measured against
+    # generation, so their shares can fall outside 0-100.
+    CheckConstraint("source IN ('Net imports', 'Demand') OR generation_twh >= 0",
+                    name="ck_generation_non_negative"),
+    CheckConstraint("source IN ('Net imports', 'Demand') OR generation_share_pct BETWEEN 0 AND 100.5",
+                    name="ck_generation_share_range"),
+    # country_id is the first column of the primary key index, so it is covered.
+    Index("ix_electricity_generation_source", "source"),
+    Index("ix_electricity_generation_year", "year"),
 )
 
 
@@ -103,9 +126,9 @@ def create_schema(engine: Engine, rebuild: bool = False) -> None:
     """Create all tables if they do not exist yet (views are created by load()).
 
     rebuild=True drops views and tables and recreates them (data is reloaded by the
-    pipeline). If an existing table's columns differ from the definitions here, or an
-    analysis output still exists as a table (the pre-3NF layout), stop and ask for a
-    rebuild instead of loading into the wrong shape.
+    pipeline). If an existing table's columns, indexes or CHECK constraints differ from
+    the definitions here, or an analysis output still exists as a table (the pre-3NF
+    layout), stop and ask for a rebuild instead of loading into the wrong shape.
     """
     try:
         if rebuild:
@@ -120,8 +143,12 @@ def create_schema(engine: Engine, rebuild: bool = False) -> None:
         outdated = sorted(set(VIEWS) & stored)
         for table in metadata.sorted_tables:
             if table.name in stored:
-                have = {c["name"] for c in existing.get_columns(table.name)}
-                if have != set(table.columns.keys()):
+                have = ({c["name"] for c in existing.get_columns(table.name)},
+                        {i["name"] for i in existing.get_indexes(table.name)},
+                        {c["name"] for c in existing.get_check_constraints(table.name)})
+                want = (set(table.columns.keys()), {i.name for i in table.indexes},
+                        {c.name for c in table.constraints if isinstance(c, CheckConstraint)})
+                if have != want:
                     outdated.append(table.name)
         if outdated:
             raise PipelineError(

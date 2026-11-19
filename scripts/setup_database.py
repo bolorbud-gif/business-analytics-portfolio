@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 from sqlalchemy.dialects import sqlite  # noqa: E402
-from sqlalchemy.schema import CreateTable  # noqa: E402
+from sqlalchemy.schema import CreateIndex, CreateTable  # noqa: E402
 
 from src.data_pipeline import PipelineError, read_config  # noqa: E402
 from src.data_pipeline.load import create_schema, get_engine, metadata  # noqa: E402
@@ -32,6 +32,8 @@ def write_ddl(path: Path) -> None:
     for table in metadata.sorted_tables:
         sql = str(CreateTable(table).compile(dialect=sqlite.dialect())).strip()
         statements.append("\n".join(line.rstrip() for line in sql.splitlines()) + ";")
+        for index in sorted(table.indexes, key=lambda i: i.name):
+            statements.append(str(CreateIndex(index).compile(dialect=sqlite.dialect())) + ";")
     statements += ["-- View: computed from the tables above, stores nothing\n" + v
                    for v in view_ddl()]
     header = ("-- Database schema (SQLite), generated from src/data_pipeline/load.py\n"
@@ -43,7 +45,7 @@ def write_ddl(path: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--rebuild", action="store_true", help="drop and recreate all tables")
-    parser.add_argument("--ddl", type=Path, help="write CREATE TABLE statements to this file")
+    parser.add_argument("--ddl", type=Path, help="write the CREATE TABLE/INDEX/VIEW SQL to this file")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 

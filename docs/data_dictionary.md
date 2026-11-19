@@ -178,3 +178,40 @@ Also exported as `data/processed/trade_wind_wide.xlsx` (one sheet, `trade_wind`)
 
 **Validated:** every row has at least one direction. In the real data no country-year has both
 directions (Import rows are 2020–2022 and 2025, Export rows 2023–2024); the sample shows both side by side.
+
+---
+
+# Constraints and indexes
+
+Enforced by SQLite itself, so they also protect the data from writes outside the pipeline. Generated from [`load.py`](../src/data_pipeline/load.py); every table also has a PRIMARY KEY, and every column marked required above is `NOT NULL`.
+
+## CHECK constraints
+
+| Table | Constraint | Rule | Why |
+|---|---|---|---|
+| `countries` | `ck_country_has_name` | `trade_name IS NOT NULL OR ember_name IS NOT NULL` | a country must be named in at least one source |
+| `countries` | `ck_iso3_length` | `iso3 IS NULL OR length(iso3) = 3` | ISO alpha-3 codes are exactly 3 letters |
+| `energy_sources` | `ck_is_aggregated_boolean` | `is_aggregated IN (0, 1)` | SQLite stores booleans as 0/1; nothing else is allowed |
+| `products` | `ck_product_code_length` | `length(product_code) = 6` | HS6 codes are exactly 6 digits |
+| `products` | `ck_quantity_unit_kg` | `quantity_unit = 'kg'` | all quantities must be comparable, in kg |
+| `electricity_generation` | `ck_capacity_non_negative` | `capacity_gw IS NULL OR capacity_gw >= 0` | installed capacity can't be negative |
+| `electricity_generation` | `ck_emissions_non_negative` | `emissions_mtco2e IS NULL OR emissions_mtco2e >= 0` | emissions can't be negative |
+| `electricity_generation` | `ck_generation_non_negative` | `source IN ('Net imports', 'Demand') OR generation_twh >= 0` | generation can't be negative, except Net imports (a balance) |
+| `electricity_generation` | `ck_generation_share_range` | `source IN ('Net imports', 'Demand') OR generation_share_pct BETWEEN 0 AND 100.5` | a share of generation is 0–100%, except Net imports / Demand, which are measured against generation |
+| `electricity_generation` | `ck_generation_year_range` | `year BETWEEN 2000 AND 2030` | years outside 2000–2030 are data errors |
+| `trade_flows` | `ck_quantity_non_negative` | `quantity >= 0` | quantity can't be negative |
+| `trade_flows` | `ck_trade_flow` | `trade_flow IN ('Export', 'Import')` | the only trade directions |
+| `trade_flows` | `ck_trade_value_non_negative` | `trade_value_usd >= 0` | trade value (money) can't be negative |
+| `trade_flows` | `ck_trade_year_range` | `year BETWEEN 2000 AND 2030` | years outside 2000–2030 are data errors |
+
+## Indexes
+
+Primary keys and UNIQUE columns are indexed automatically. A foreign key that is the **first** column of the primary key (`trade_flows.reporter_id`, `electricity_generation.country_id`) is already covered by that index. These indexes cover the rest:
+
+| Table | Index | Columns | Serves |
+|---|---|---|---|
+| `electricity_generation` | `ix_electricity_generation_source` | source | FK `source` |
+| `electricity_generation` | `ix_electricity_generation_year` | year | filters by year |
+| `trade_flows` | `ix_trade_flows_partner_year` | partner_id, year | FK `partner_id`; also serves the views' partner + year lookups |
+| `trade_flows` | `ix_trade_flows_product_code` | product_code | FK `product_code` |
+| `trade_flows` | `ix_trade_flows_year` | year | filters by year (`WHERE year = 2024`) |

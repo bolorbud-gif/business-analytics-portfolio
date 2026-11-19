@@ -337,6 +337,47 @@ def test_connect_helper_turns_foreign_keys_on(tmp_path):
     assert sqlite3.connect(tmp_path / "sample.db").execute("pragma foreign_keys").fetchone()[0] == 0
 
 
+def test_foreign_keys_and_year_are_indexed(tmp_path):
+    run_sample(tmp_path)
+    db = connect(tmp_path / "sample.db")
+    for table in ["trade_flows", "electricity_generation"]:
+        leading = {db.execute(f"pragma index_info('{ix[1]}')").fetchone()[2]
+                   for ix in db.execute(f"pragma index_list({table})")}
+        fk_cols = {fk[3] for fk in db.execute(f"pragma foreign_key_list({table})")}
+        assert fk_cols <= leading, f"{table}: unindexed FK {fk_cols - leading}"
+        plan = db.execute(f"explain query plan select * from {table} where year = 2024").fetchone()[3]
+        assert "USING INDEX" in plan, plan
+
+
+def test_more_check_constraints_refuse_rule_breaks(tmp_path):
+    run_sample(tmp_path)
+    db = connect(tmp_path / "sample.db")
+    for sql, constraint in [
+        ("insert into trade_flows values (1, 'Export', '284690', 1990, 2, 5, 1)", "ck_trade_year_range"),
+        ("insert into electricity_generation (country_id, year, source, generation_twh, "
+         "generation_share_pct, emissions_mtco2e) values (1, 2099, 'Wind', 1, 1, -1)", "ck_"),
+        ("insert into electricity_generation (country_id, year, source, generation_twh, "
+         "generation_share_pct) values (1, 2025, 'Wind', -1, 1)", "ck_generation_non_negative"),
+        ("insert into countries values (999, 'X', NULL, 'AB', NULL)", "ck_iso3_length"),
+        ("insert into products values ('123', 'x', 'kg')", "ck_product_code_length"),
+        ("insert into products values ('123456', 'x', 'ton')", "ck_quantity_unit_kg"),
+    ]:
+        with pytest.raises(sqlite3.IntegrityError, match=constraint):
+            db.execute(sql)
+    # balances are allowed to be negative
+    db.execute("insert into electricity_generation (country_id, year, source, generation_twh, "
+               "generation_share_pct) values (1, 2025, 'Net imports', -1, -50)")
+
+
+def test_missing_index_counts_as_outdated(tmp_path):
+    run_sample(tmp_path)
+    url = f"sqlite:///{tmp_path / 'sample.db'}"
+    with create_engine(url).begin() as conn:
+        conn.execute(text("drop index ix_trade_flows_year"))
+    with pytest.raises(PipelineError, match="--rebuild"):
+        create_schema(get_engine(url))
+
+
 def test_analysis_outputs_are_views_not_tables(tmp_path):
     run_sample(tmp_path)
     insp = inspect(get_engine(f"sqlite:///{tmp_path / 'sample.db'}"))

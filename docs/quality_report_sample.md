@@ -2,7 +2,7 @@
 
 Generated automatically by `scripts/run_pipeline.py`. Do not edit by hand.
 
-- **Run started:** 2026-11-18T23:19:47
+- **Run started:** 2026-11-18T23:42:58
 - **Status:** SUCCESS
 - **Raw data:** `data/sample`
 - **Database:** `sqlite:///data/processed/rare_earth_sample.db`

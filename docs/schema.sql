@@ -9,6 +9,8 @@ CREATE TABLE countries (
 	iso3 VARCHAR(3),
 	area_type VARCHAR,
 	PRIMARY KEY (country_id),
+	CONSTRAINT ck_country_has_name CHECK (trade_name IS NOT NULL OR ember_name IS NOT NULL),
+	CONSTRAINT ck_iso3_length CHECK (iso3 IS NULL OR length(iso3) = 3),
 	UNIQUE (trade_name),
 	UNIQUE (ember_name),
 	UNIQUE (iso3)
@@ -17,14 +19,17 @@ CREATE TABLE countries (
 CREATE TABLE energy_sources (
 	source VARCHAR NOT NULL,
 	is_aggregated BOOLEAN NOT NULL,
-	PRIMARY KEY (source)
+	PRIMARY KEY (source),
+	CONSTRAINT ck_is_aggregated_boolean CHECK (is_aggregated IN (0, 1))
 );
 
 CREATE TABLE products (
 	product_code VARCHAR(6) NOT NULL,
 	product_description VARCHAR NOT NULL,
 	quantity_unit VARCHAR NOT NULL,
-	PRIMARY KEY (product_code)
+	PRIMARY KEY (product_code),
+	CONSTRAINT ck_product_code_length CHECK (length(product_code) = 6),
+	CONSTRAINT ck_quantity_unit_kg CHECK (quantity_unit = 'kg')
 );
 
 CREATE TABLE electricity_generation (
@@ -41,9 +46,17 @@ CREATE TABLE electricity_generation (
 	emissions_share_pct FLOAT,
 	PRIMARY KEY (country_id, year, source),
 	CONSTRAINT ck_capacity_non_negative CHECK (capacity_gw IS NULL OR capacity_gw >= 0),
+	CONSTRAINT ck_generation_year_range CHECK (year BETWEEN 2000 AND 2030),
+	CONSTRAINT ck_emissions_non_negative CHECK (emissions_mtco2e IS NULL OR emissions_mtco2e >= 0),
+	CONSTRAINT ck_generation_non_negative CHECK (source IN ('Net imports', 'Demand') OR generation_twh >= 0),
+	CONSTRAINT ck_generation_share_range CHECK (source IN ('Net imports', 'Demand') OR generation_share_pct BETWEEN 0 AND 100.5),
 	FOREIGN KEY(country_id) REFERENCES countries (country_id),
 	FOREIGN KEY(source) REFERENCES energy_sources (source)
 );
+
+CREATE INDEX ix_electricity_generation_source ON electricity_generation (source);
+
+CREATE INDEX ix_electricity_generation_year ON electricity_generation (year);
 
 CREATE TABLE trade_flows (
 	reporter_id INTEGER NOT NULL,
@@ -57,10 +70,17 @@ CREATE TABLE trade_flows (
 	CONSTRAINT ck_trade_flow CHECK (trade_flow IN ('Export', 'Import')),
 	CONSTRAINT ck_trade_value_non_negative CHECK (trade_value_usd >= 0),
 	CONSTRAINT ck_quantity_non_negative CHECK (quantity >= 0),
+	CONSTRAINT ck_trade_year_range CHECK (year BETWEEN 2000 AND 2030),
 	FOREIGN KEY(reporter_id) REFERENCES countries (country_id),
 	FOREIGN KEY(product_code) REFERENCES products (product_code),
 	FOREIGN KEY(partner_id) REFERENCES countries (country_id)
 );
+
+CREATE INDEX ix_trade_flows_partner_year ON trade_flows (partner_id, year);
+
+CREATE INDEX ix_trade_flows_product_code ON trade_flows (product_code);
+
+CREATE INDEX ix_trade_flows_year ON trade_flows (year);
 
 -- View: computed from the tables above, stores nothing
 CREATE VIEW electricity_generation_detail AS

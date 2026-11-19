@@ -78,6 +78,10 @@ committing. For your own scripts and notebooks, open the database with
 let orphan rows in. CHECK constraints also block negative money or quantities and unknown trade
 directions at the database level.
 
+Every foreign key column and the `year` columns are indexed. The full list of CHECK constraints
+and indexes, each with the business rule behind it, is in the
+[data dictionary](data_dictionary.md#constraints-and-indexes).
+
 ## Analysis views (computed, not stored)
 
 Each view is a saved `SELECT` over the tables above, so it can never disagree with them.
