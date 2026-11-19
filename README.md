@@ -79,6 +79,59 @@ The analysis outputs are SQL **views**: computed from the tables when queried, s
 | `trade_wind_merged` | One `data1.xlsx` row matched to `country_wind_imports` on country + year. Exported to `trade_wind_merged.csv` |
 | `trade_wind_wide` | Export and Import side by side, one row per country-year. Exported to `trade_wind_wide.csv` and `.xlsx` (one sheet) |
 
+### Entity Relationship Diagram
+
+The five stored tables (3NF) and how they relate. Views, field details and relationship rules are in
+[docs/ERD.md](docs/ERD.md).
+
+```mermaid
+erDiagram
+    countries ||--o{ trade_flows : "reports (reporter_id)"
+    countries ||--o{ trade_flows : "is partner in (partner_id)"
+    products ||--o{ trade_flows : "is traded in"
+    countries ||--o{ electricity_generation : "generates"
+    energy_sources ||--o{ electricity_generation : "is source of"
+
+    countries {
+        int country_id PK
+        string trade_name UK "data1.xlsx name"
+        string ember_name UK "data2.xlsx name"
+        string iso3 UK
+        string area_type
+    }
+    products {
+        string product_code PK "HS6"
+        string product_description
+        string quantity_unit
+    }
+    energy_sources {
+        string source PK
+        bool is_aggregated
+    }
+    trade_flows {
+        int reporter_id PK, FK
+        string trade_flow PK "Export or Import"
+        string product_code PK, FK
+        int year PK
+        int partner_id PK, FK
+        bigint trade_value_usd "whole USD"
+        float quantity "kg"
+    }
+    electricity_generation {
+        int country_id PK, FK
+        int year PK
+        string source PK, FK
+        float generation_twh
+        float generation_yoy_twh
+        float generation_share_pct
+        float generation_share_yoy_pp
+        float capacity_gw
+        float emissions_mtco2e
+        float emissions_yoy_mtco2e
+        float emissions_share_pct
+    }
+```
+
 ### How it works
 
 | Stage | Module | What it does |
