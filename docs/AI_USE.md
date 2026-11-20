@@ -16,6 +16,15 @@
   AI, which is why I could recognize and verify them. I also used it to compare
   different analysis equations. I developed the hypotheses, ordered the logic between
   the ideas, and wrote my own thoughts myself.
+- **Proposal rewrite (rare-earth topic):** The portfolio moved to the rare-earth topic in
+  Assignment 4, so after Assignment 6 I asked Claude Code to draft a rewrite of the proposal
+  in the original proposal's structure, from the work in Assignments 4–6. It checked each
+  journal article it cited against Crossref, and opened the news article and data pages. I
+  then revised the draft myself in Word: I changed the title to "Do Chinese Rare Earths
+  exports affect wind power generation globally or domestically?", rewrote the introduction,
+  extended the problem definition, added Depraiter & Goutte (2023), and shortened the methods
+  and references. Claude Code converted my Word file to `docs/proposal.pdf`. The Mongolia
+  proposal stays in the git history.
 - **Portfolio repository setup:** Used Claude Code to check the required folder
   structure, rename the notebooks, update `.gitignore`, add the MIT license, and commit
   the proposal to GitHub.
