@@ -20,10 +20,11 @@
   Assignment 4, so after Assignment 6 I asked Claude Code to draft a rewrite of the proposal
   in the original proposal's structure, from the work in Assignments 4–6. It checked each
   journal article it cited against Crossref, and opened the news article and data pages. I
-  then revised the draft myself in Word: I changed the title to "Do Chinese Rare Earths
-  exports affect wind power generation globally or domestically?", rewrote the introduction,
-  extended the problem definition, added Depraiter & Goutte (2023), and shortened the methods
-  and references. Claude Code converted my Word file to `docs/proposal.pdf`. The Mongolia
+  then revised the draft myself in Word: I rewrote the introduction, extended the problem
+  definition, added Depraiter & Goutte (2023), and shortened the methods and references. I
+  chose the final title, "Does Wind Power Growth Drive Demand for Chinese Rare-Earth
+  Exports?", so that it matches hypotheses H1–H5. Claude Code converted my Word file to
+  `docs/proposal.pdf` and fixed two equations and three references I asked it to. The Mongolia
   proposal stays in the git history.
 - **Portfolio repository setup:** Used Claude Code to check the required folder
   structure, rename the notebooks, update `.gitignore`, add the MIT license, and commit
