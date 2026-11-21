@@ -1,0 +1,118 @@
+{
+  "analysis": {
+    "checks_passed": 19,
+    "checks_total": 19,
+    "concentration_latest": {
+      "countries": 60,
+      "hhi": 2054,
+      "level": "highly concentrated",
+      "top10_share": 0.9431587019,
+      "top1_share": 0.354540763,
+      "top5_share": 0.8307705547,
+      "year": 2024
+    },
+    "export_change_pct": {
+      "quantity_kg": 5.726836923,
+      "unit_value_usd_per_kg": -30.35763169,
+      "value_kusd": -26.36932683
+    },
+    "model_a": {
+      "n": 102,
+      "r2": 0.2913909826,
+      "wind": 0.9391773868
+    },
+    "model_b": {
+      "n": 102,
+      "r2": 0.5833198965,
+      "size": 1.741604099,
+      "wind": 0.1998948246,
+      "wind_ci": [
+        -0.1191123334,
+        0.5189019826
+      ]
+    },
+    "price_decomposition": {
+      "average_change_pct": -30.35763169,
+      "buyers": 52,
+      "mix_effect_pct": 6.883020067,
+      "price_effect_pct": -34.84243964,
+      "volume_covered": 0.9999574156,
+      "volume_share_price_fell": 0.7684282946
+    },
+    "sample": {
+      "countries": 58,
+      "rows": 102,
+      "years": [
+        2023,
+        2024
+      ]
+    },
+    "size_groups": [
+      "Small",
+      "Medium",
+      "Large"
+    ],
+    "wind_trend": {
+      "countries": 60,
+      "first_year": 2020,
+      "labels": [
+        "China",
+        "Other 59 countries"
+      ],
+      "last_year": 2025,
+      "series": [
+        "China",
+        "Other"
+      ]
+    }
+  },
+  "engine": {
+    "actions_rules": {
+      "far_above": 10,
+      "far_below": 0.1
+    },
+    "artifact": {
+      "created_utc": "2026-11-21T05:38:46+00:00",
+      "data_sha256": "db4c182882dc3aa7fcd01e1fc543c68e1863be5707f46d04ba974fe0cf343f78",
+      "git_commit": "14ddfc2a6ecfc273d2c6655321e45ca4a075df95",
+      "random_state": 42
+    },
+    "costs": {
+      "false_negative": 3,
+      "false_positive": 1
+    },
+    "feature_lag_years": 1,
+    "features": [
+      "wind_capacity_gw",
+      "wind_generation_twh",
+      "solar_capacity_gw",
+      "total_generation_twh",
+      "demand_twh",
+      "renewables_share_pct",
+      "emissions_intensity_g_per_kwh",
+      "year"
+    ],
+    "major_buyer_kg": 10000,
+    "models": {
+      "classification": "Random forest",
+      "regression": "Linear regression (log-log OLS)"
+    },
+    "params": {
+      "classification": {
+        "model__max_depth": 2,
+        "model__min_samples_leaf": 3
+      },
+      "regression": {}
+    },
+    "rows": 102,
+    "test_countries": 14,
+    "test_rows": 25,
+    "threshold": 0.25,
+    "train_countries": 44,
+    "train_rows": 77,
+    "years": {
+      "actions": 2024,
+      "forecast": 2025
+    }
+  }
+}

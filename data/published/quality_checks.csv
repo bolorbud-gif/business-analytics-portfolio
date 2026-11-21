@@ -1,0 +1,20 @@
+check,passed,detail
+Foreign keys enforced on this connection,True,PRAGMA foreign_keys = 1
+SQLite file integrity,True,ok
+No orphan rows,True,0 rows without a matching parent
+Table countries is not empty,True,73 rows
+Table products is not empty,True,1 rows
+Table energy_sources is not empty,True,17 rows
+Table trade_flows is not empty,True,227 rows
+Table electricity_generation is not empty,True,"6,729 rows"
+View electricity_generation_detail: one row per key,True,"6,729 rows, 0 duplicate keys on (country, year, source)"
+View electricity_generation_detail: passes validation rules,True,all Pandera checks pass
+View partner_trade_energy: one row per key,True,"227 rows, 0 duplicate keys on (reporter, trade_flow, product_code, year, partner)"
+View partner_trade_energy: passes validation rules,True,all Pandera checks pass
+View country_wind_imports: one row per key,True,"432 rows, 0 duplicate keys on (partner, year)"
+View country_wind_imports: passes validation rules,True,all Pandera checks pass
+View trade_wind_merged: one row per key,True,"223 rows, 0 duplicate keys on (reporter, trade_flow, product_code, year, partner)"
+View trade_wind_merged: passes validation rules,True,all Pandera checks pass
+View trade_wind_wide: one row per key,True,"223 rows, 0 duplicate keys on (partner, year)"
+View trade_wind_wide: passes validation rules,True,all Pandera checks pass
+trade_wind_merged keeps every trade row except re-imports,True,227 trade rows - 4 re-imports = 223; view has 223

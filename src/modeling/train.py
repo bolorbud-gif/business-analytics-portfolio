@@ -332,10 +332,53 @@ def provenance(data: pd.DataFrame, config: dict, source: str) -> dict:
     }
 
 
+def evaluation_artifacts(engine: dict, config: dict) -> dict:
+    """The evidence behind the engine's scores, computed once at training time and saved with it,
+    so a reviewer (or the dashboard) can inspect it without retraining. Tables:
+
+    - cv: both tasks' nested cross-validation summaries (mean and SD of each metric, per model)
+    - test: test-set metrics of the chosen model and of the dummy baseline
+    - intervals: 95% bootstrap intervals for the test metrics (whole countries resampled)
+    - test_predictions: each test country-year's predicted log10 imports and P(major buyer)
+    - train_scores: out-of-fold P(major buyer) for the training countries (used to set the threshold)
+    """
+    train, test = engine["train"], engine["test"]
+    features, seed = feature_columns(config), config["split"]["random_state"]
+    reg, clf = engine["regression"], engine["classification"]
+    threshold = clf["model"]["threshold"]
+    pred = reg["model"]["fitted"].predict(test[features])
+    p_test = clf["model"]["fitted"].predict_proba(test[features])[:, 1]
+    cv = ev.group_folds("classification", config["split"]["cv_folds"], seed)
+    oof = ev.out_of_fold_scores(clf["model"]["fitted"], train[features], train["major_buyer"], train["country"], cv)
+    tests = [{"task": task, "role": role, "model": t[role]["name"], **t[role]["test"]}
+             for task, t in [("regression", reg), ("classification", clf)] for role in ("baseline", "model")]
+    intervals = [{"task": "regression", **ev.bootstrap_ci(test["log10_imports"], pred, test["country"],
+                                                          "regression", m, random_state=seed)}
+                 for m in ("MAE", "R2")]
+    intervals += [{"task": "classification",
+                   **ev.bootstrap_ci(test["major_buyer"], p_test, test["country"], "classification", m,
+                                     random_state=seed, threshold=threshold, costs=config["costs"])}
+                  for m in ("AUC", "cost", "recall", "precision")]
+    return {
+        "cv": pd.concat({"regression": reg["summary"], "classification": clf["summary"]},
+                        names=["task"]).reset_index(level=0).reset_index(drop=True),
+        "test": pd.DataFrame(tests),
+        "intervals": pd.DataFrame(intervals),
+        "test_predictions": pd.DataFrame({
+            "country": test["country"], "year": test["year"], "actual_log10": test["log10_imports"],
+            "predicted_log10": pred, "major_buyer": test["major_buyer"], "p_major_buyer": p_test}),
+        "train_scores": pd.DataFrame({"country": train["country"], "major_buyer": train["major_buyer"],
+                                      "p_major_buyer": oof}),
+        "split": {"rows": len(engine["data"]), "train_rows": len(train), "test_rows": len(test),
+                  "train_countries": int(train["country"].nunique()),
+                  "test_countries": int(test["country"].nunique())},
+    }
+
+
 def model_bundle(engine: dict, config: dict, source: str) -> dict:
     """What gets saved: both final pipelines (preprocessing included) plus what's needed to
-    use and audit them: problem types, features, target, threshold, business costs, scores
-    and provenance."""
+    use and audit them: problem types, features, target, threshold, business costs, scores,
+    the evaluation evidence (evaluation_artifacts) and provenance."""
     record = provenance(engine["data"], config, source)
     return {
         "problem_types": PROBLEM_TYPES,
@@ -352,6 +395,7 @@ def model_bundle(engine: dict, config: dict, source: str) -> dict:
         "cv": {task: engine[task]["summary"].to_dict("records") for task in TASKS},
         "test": {task: {"model": engine[task]["model"]["test"],
                         "baseline": engine[task]["baseline"]["test"]} for task in TASKS},
+        "evaluation": evaluation_artifacts(engine, config),
         "trained_on": {"rows": len(engine["data"]), "countries": int(engine["data"]["country"].nunique()),
                        "years": config["data"]["years"], "database": source},
         "versions": {k: v for k, v in record["environment"].items() if k not in ("python", "platform")},

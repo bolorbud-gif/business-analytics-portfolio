@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 PACKAGES = {
     "src.analysis": ["exploratory", "statistical", "charts"],
     "src.modeling": ["train", "evaluate", "predict"],
+    "src.dashboard": ["data", "components"],  # app.py is the Streamlit script itself
     "src.data_pipeline": ["pipeline", "extract", "transform", "validate", "load", "views", "quality"],
 }
 
@@ -36,6 +37,29 @@ def summary(obj) -> str:
     return " ".join(doc.split("\n\n")[0].split())
 
 
+class _FromRoot:
+    """A path default shown relative to the project root, so the reference holds no
+    machine-specific absolute paths."""
+
+    def __init__(self, path: Path):
+        self.text = path.relative_to(ROOT).as_posix()
+
+    def __repr__(self) -> str:
+        return "ROOT" if self.text == "." else f"ROOT / '{self.text}'"
+
+
+def signature(obj) -> str:
+    """The signature, with path defaults inside the project written relative to its root."""
+    try:
+        sig = inspect.signature(obj)
+    except (TypeError, ValueError):
+        return "(...)"
+    params = [p.replace(default=_FromRoot(p.default))
+              if isinstance(p.default, Path) and p.default.is_relative_to(ROOT) else p
+              for p in sig.parameters.values()]
+    return str(sig.replace(parameters=params))
+
+
 def build() -> str:
     lines = ["# API Reference", "",
              "Generated from the docstrings by `scripts/build_api_reference.py`; do not edit by hand.",
@@ -48,11 +72,7 @@ def build() -> str:
             lines += [f"### `{package}.{mod_name}`", "", summary(module), ""]
             for name, obj in public_members(module):
                 kind = "class" if inspect.isclass(obj) else "def"
-                try:
-                    sig = str(inspect.signature(obj))
-                except (TypeError, ValueError):
-                    sig = "(...)"
-                lines.append(f"- **`{name}`** `{kind} {name}{sig}`")
+                lines.append(f"- **`{name}`** `{kind} {name}{signature(obj)}`")
                 text = summary(obj)
                 if text:
                     lines.append(f"  {text}")

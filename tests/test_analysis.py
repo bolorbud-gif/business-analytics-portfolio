@@ -292,9 +292,10 @@ def test_size_adjusted_residuals_match_partial_correlation():
 
 def test_show_saves_only_when_asked(tmp_path):
     fig = ch.change_bars(pd.Series({"a": 1.0}), "t", "s", "src")
-    assert ch.show(fig, "kept", folder=tmp_path).exists()
+    assert ch.show(fig, "kept", folder=tmp_path) is None  # no path in notebook outputs
+    assert (tmp_path / "kept.png").exists() and (tmp_path / "kept.svg").exists()
     fig = ch.change_bars(pd.Series({"a": 1.0}), "t", "s", "src")
-    assert ch.show(fig, "skipped", save_figure=False, folder=tmp_path) is None
+    ch.show(fig, "skipped", save_figure=False, folder=tmp_path)
     assert not (tmp_path / "skipped.png").exists()
 
 
@@ -436,6 +437,17 @@ def test_buyer_volumes_sums_one_year_and_direction():
                           "year": [2024, 2024, 2024, 2023], "partner": ["A", "A", "A", "B"],
                           "quantity_kg": [1.0, 2.0, 50.0, 7.0]})
     assert ex.buyer_volumes(trade, 2024).to_dict() == {"A": 3.0}
+
+
+def test_buyers_by_year_gives_prices_and_shares_per_year():
+    trade = pd.DataFrame({"trade_flow": ["Export", "Export", "Export", "Import", "Export"],
+                          "year": [2024, 2024, 2024, 2024, 2023], "partner": ["A", "A", "B", "A", "B"],
+                          "quantity_kg": [1.0, 2.0, 1.0, 50.0, 7.0], "trade_value_kusd": [1.0, 2.0, 4.0, 9.0, 7.0]})
+    out = ex.buyers_by_year(trade)
+    assert list(out["partner"]) == ["B", "A", "B"]  # by year, largest buyer first
+    a = out[(out["year"] == 2024) & (out["partner"] == "A")].iloc[0]
+    assert a["quantity_kg"] == 3.0 and a["usd_per_kg"] == 1000.0 and a["share_pct"] == 75.0
+    assert out.groupby("year")["share_pct"].sum().tolist() == [100.0, 100.0]
 
 
 # --- Regression checks: descriptive table, PPML, change regressions, missing years ----------

@@ -1,0 +1,7 @@
+task,metric,estimate,ci_low,ci_high,n_boot
+regression,MAE,1.02228816,0.7413425249,1.312000421,1000
+regression,R2,0.4813246171,0.01969464985,0.6653014409,1000
+classification,AUC,0.9545454545,0.8156052632,1,998
+classification,cost,0.16,0,0.3600909091,1000
+classification,recall,1,1,1,1000
+classification,precision,0.7333333333,0.4114705882,1,1000

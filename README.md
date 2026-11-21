@@ -247,3 +247,41 @@ Re-run the notebook after training (without the real database it uses synthetic 
 ```bash
 uv run jupyter nbconvert --to notebook --execute --inplace notebooks/03_modeling_experiments.ipynb
 ```
+
+## Dashboard (Assignment 7)
+
+An interactive Streamlit app that walks through the question, evidence, results and limitations from
+Assignments 3–6. It runs locally and reproduces from a clean clone, with or without the restricted data.
+Full guide: [docs/deployment.md](docs/deployment.md).
+
+```bash
+uv sync                                          # exact versions from uv.lock, Streamlit included
+uv run python scripts/deploy.py run              # open http://localhost:8501 (committed real-data snapshot)
+uv run python scripts/deploy.py run --sample     # rebuild everything from the synthetic sample, then launch
+uv run python scripts/deploy.py check            # with the real data: rebuild and compare with the snapshot
+```
+
+**The one conclusion it makes clear:** country size, not wind, drives demand for Chinese rare-earth
+compounds, so demand should be sized from a country's power system, not its wind targets. The design
+(the conclusion, the page hierarchy, the data-access layer, the notes and the error states) and the
+rehearsed presentation path are in [docs/deployment.md](docs/deployment.md).
+
+| Section | Page | What a reader can do |
+|---|---|---|
+| Start here | **The answer** (primary) | Read the conclusion and four KPIs, the evidence in one chart, and what it means |
+| The case | 1 · Why: wind or size? | Filter by year and country size (the regressions are refitted), plot imports against any power measure, remove country size, read H1–H5 |
+| The case | 2 · What to do | Filter countries by action (Approach, Grow, Verify, Keep, Low priority); see the 2025 forecast |
+| More detail | Market evidence | Pick a year and the number of buyers; see the fixed-volume price fall and the wind build-out |
+| More detail | Predictive engine | Compare models with the baseline; move the cost ratio and threshold and watch precision, recall and cost |
+| More detail | Data and pipeline | See sources, coverage and the 19 quality checks; filter and download the analysis sample |
+| About | Limitations and reproducibility | Limitations, the provenance of every number, and how to reproduce them |
+
+Filters are in the sidebar. Under every title a caption gives the years the data cover and when the results
+were built, and every evidence page ends with its sample, uncertainty, provenance and limitations.
+
+**How it stays reproducible.** The app only reads a results snapshot, built by
+[`src/dashboard/data.py`](src/dashboard/data.py) from the Assignment 4 database and the saved Assignment 6
+engine artifact, with the same functions as the notebooks. The real snapshot is committed in [`data/published/`](data/published/) with its data fingerprint and git
+commit. `deploy.py check` rebuilds it from the real data and compares every number, and
+`deploy.py run --sample` rebuilds the whole chain from the committed synthetic data.
+`tests/test_dashboard.py` opens every page headlessly on both snapshots.

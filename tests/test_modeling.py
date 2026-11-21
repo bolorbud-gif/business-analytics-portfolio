@@ -334,3 +334,13 @@ def test_recommend_turns_predictions_into_actions():
     out = pr.recommend(table, bundle).set_index("country")["action"]
     assert out.to_dict() == {"New": "Approach", "Tiny": "Low priority", "Hub": "Verify", "Under": "Grow",
                              "Big": "Keep", "Small": "Low priority", "Lagging": "Grow"}
+
+
+def test_saved_bundle_carries_the_evaluation_evidence(engine, quick_config):
+    bundle = tr.model_bundle(engine, quick_config, "synthetic")
+    evaluation = bundle["evaluation"]
+    assert set(evaluation) == {"cv", "test", "intervals", "test_predictions", "train_scores", "split"}
+    assert len(evaluation["test_predictions"]) == len(engine["test"])
+    assert len(evaluation["train_scores"]) == len(engine["train"])
+    assert evaluation["split"]["test_rows"] == len(engine["test"])
+    assert set(evaluation["intervals"]["metric"]) == {"MAE", "R2", "AUC", "cost", "recall", "precision"}

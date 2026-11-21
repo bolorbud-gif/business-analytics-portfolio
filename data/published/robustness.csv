@@ -1,0 +1,7 @@
+model,term,n,coef,ci_low,ci_high,p,fold_10x
+B: all buyers (log-log OLS),log_wind_capacity_gw,102,0.1998948246,-0.1191123334,0.5189019826,0.2193929987,1.584509417
+B: all buyers (log-log OLS),log_total_generation_twh,102,1.741604099,1.260575113,2.222633084,1.282272721e-12,55.15743967
+B: buyers in both years only,log_wind_capacity_gw,88,0.1535916613,-0.1528180077,0.4600013304,0.3258750779,1.424267818
+B: buyers in both years only,log_total_generation_twh,88,2.028759025,1.465919838,2.591598213,1.609538506e-12,106.8461863
+PPML: missing years as 0 kg,log_wind_capacity_gw,116,0.1362743887,-0.329159847,0.6017086245,0.5660642827,1.368593234
+PPML: missing years as 0 kg,log_total_generation_twh,116,1.054695151,0.1769208029,1.932469499,0.01852236947,11.34214385

@@ -481,3 +481,105 @@ def hypothesis_table(tests: list[dict], alpha: float = 0.05) -> pd.DataFrame:
     df["result"] = np.where(reject, "Supported", "Not supported")
     ordered = [c for c in HYPOTHESIS_COLUMNS if c in df]
     return df[ordered + [c for c in df if c not in ordered]]
+
+
+# --- The project's hypothesis tests, in one place (used by notebook 02 and the dashboard) ---------
+
+IMPORTS, WIND, SIZE = "imports_from_china_kg", "wind_capacity_gw", "total_generation_twh"
+
+
+def main_hypothesis_tests(sample: pd.DataFrame, growth: pd.DataFrame, exports: pd.DataFrame,
+                          order: list = ("Small", "Medium", "Large"), start: int = 2023,
+                          end: int = 2024) -> pd.DataFrame:
+    """H1-H5 with the tests chosen after the assumption checks, Holm-corrected.
+
+    sample: exploratory.analysis_sample(panel); growth: exploratory.growth_vs_wind(panel, end);
+    exports: the Export trade rows (partner, year, unit_value_usd_per_kg). Each row leads with
+    its business magnitude and effect size (see hypothesis_table).
+    """
+    a = tidy_coefficients(fit_log_ols(sample, IMPORTS, [WIND]))
+    b = tidy_coefficients(fit_log_ols(sample, IMPORTS, [WIND, SIZE]))
+    w = f"log_{WIND}"
+    h1 = correlation(sample, IMPORTS, WIND)
+    h2 = partial_correlation(sample, IMPORTS, WIND, [SIZE])
+    h3 = correlation(growth, "import_growth_pct", "wind_generation_change_twh")
+    h4 = paired_change(exports, "partner", "year", "unit_value_usd_per_kg", start, end, test="sign")
+    h5 = compare_groups(sample, IMPORTS, "size_group", list(order))
+    split = split_medians(growth, "import_growth_pct", "wind_generation_change_twh")
+    return hypothesis_table([
+        {"hypothesis": "H1: imports rise with wind capacity",
+         "magnitude": f"10x the wind capacity, {fold_change(a.loc[w, 'coef']):.1f}x the imports",
+         "effect_measure": "Spearman rho", "effect_size": h1["r"], "effect": h1["strength"],
+         "test": "Spearman correlation", "n": h1["n"], "statistic": h1["r"], "p": h1["p"]},
+        {"hypothesis": "H2: wind matters after controlling for size",
+         "magnitude": f"Same size, 10x the wind: {fold_change(b.loc[w, 'coef']):.1f}x the imports "
+                      f"(95% CI {fold_change(b.loc[w, 'ci_low']):.2f}x to {fold_change(b.loc[w, 'ci_high']):.1f}x)",
+         "effect_measure": "partial r", "effect_size": h2["r"], "effect": h2["strength"],
+         "test": "Partial correlation (log10)", "n": h2["n"], "statistic": h2["r"], "p": h2["p"]},
+        {"hypothesis": f"H3: faster wind growth, faster import growth ({end})",
+         "magnitude": f"Median import growth {split['above']:+.0f}% where wind grew most, "
+                      f"{split['below']:+.0f}% elsewhere",
+         "effect_measure": "Spearman rho", "effect_size": h3["r"], "effect": h3["strength"],
+         "test": "Spearman correlation", "n": h3["n"], "statistic": h3["r"], "p": h3["p"]},
+        {"hypothesis": f"H4: buyers paid less per kg in {end} than {start}",
+         "magnitude": f"Median buyer {h4['median_change_pct']:+.0f}% (95% CI {h4['ci_low_pct']:+.0f}% to "
+                      f"{h4['ci_high_pct']:+.0f}%); {h4['share_falling']:.0%} paid less",
+         "effect_measure": "rank-biserial r", "effect_size": h4["rank_biserial"],
+         "effect": strength(h4["rank_biserial"]),
+         "test": "Sign test (paired)", "n": h4["n"], "statistic": h4["statistic"], "p": h4["p"]},
+        {"hypothesis": "H5: imports differ by country size",
+         "magnitude": f"Large countries' median imports "
+                      f"{h5['medians'][order[-1]] / h5['medians'][order[0]]:,.0f}x small countries'",
+         "effect_measure": "epsilon-squared", "effect_size": h5["epsilon_sq"], "effect": h5["effect"],
+         "test": "Kruskal-Wallis", "n": h5["n"], "statistic": h5["statistic"], "p": h5["p"]},
+    ])
+
+
+def regression_hypothesis_checks(sample: pd.DataFrame, panel: pd.DataFrame, exports: pd.DataFrame,
+                                 start: int = 2023, end: int = 2024) -> pd.DataFrame:
+    """Each hypothesis re-tested as a regression, with a residual normality check, Holm-corrected.
+
+    H1, H2, H5: log-log OLS (wind only; wind + size). H3: OLS in log changes between start and
+    end, size growth controlled. H4: OLS of the log price change on a constant, which is the
+    paired t-test (its residual check shows whether that is valid).
+    """
+    wind_only = fit_log_ols(sample, IMPORTS, [WIND])
+    with_size = fit_log_ols(sample, IMPORTS, [WIND, SIZE])
+    growth_model = fit_log_change_ols(panel, IMPORTS, ["wind_generation_twh", SIZE], "country", "year",
+                                      start, end)
+    price_model = fit_log_change_ols(exports, "unit_value_usd_per_kg", [], "partner", "year", start, end)
+    ev = {"H1": coefficient_evidence(wind_only, f"log_{WIND}"),
+          "H2": coefficient_evidence(with_size, f"log_{WIND}"),
+          "H3": coefficient_evidence(growth_model, "dlog_wind_generation_twh", factor=2),
+          "H4": coefficient_evidence(price_model, "Intercept"),
+          "H5": coefficient_evidence(with_size, f"log_{SIZE}")}
+    keys = ["n", "statistic", "p", "residual_shapiro_p"]
+    pct = log_ratio_to_pct
+    return hypothesis_table([
+        {"hypothesis": "H1: imports rise with wind capacity",
+         "magnitude": f"10x the wind, {ev['H1']['fold']:.1f}x the imports "
+                      f"({ev['H1']['fold_low']:.1f}x to {ev['H1']['fold_high']:.1f}x)",
+         "effect_measure": "elasticity", "effect_size": ev["H1"]["coef"],
+         "test": "Log-log OLS, wind only (Model A)", **{k: ev["H1"][k] for k in keys}},
+        {"hypothesis": "H2: wind matters after controlling for size",
+         "magnitude": f"Same size, 10x the wind: {ev['H2']['fold']:.1f}x the imports "
+                      f"({ev['H2']['fold_low']:.2f}x to {ev['H2']['fold_high']:.1f}x)",
+         "effect_measure": "elasticity", "effect_size": ev["H2"]["coef"],
+         "test": "Log-log OLS, wind + size (Model B)", **{k: ev["H2"][k] for k in keys}},
+        {"hypothesis": f"H3: faster wind growth, faster import growth ({end})",
+         "magnitude": f"Doubling wind output: {ev['H3']['fold']:.2f}x the import growth "
+                      f"({ev['H3']['fold_low']:.2f}x to {ev['H3']['fold_high']:.0f}x)",
+         "effect_measure": "growth elasticity", "effect_size": ev["H3"]["coef"],
+         "test": "OLS in log changes, size growth controlled", **{k: ev["H3"][k] for k in keys}},
+        {"hypothesis": f"H4: buyers paid less per kg in {end} than {start}",
+         "magnitude": f"Mean buyer {pct(ev['H4']['coef']):+.0f}% "
+                      f"({pct(ev['H4']['ci_low']):+.0f}% to {pct(ev['H4']['ci_high']):+.0f}%)",
+         "effect_measure": "mean log change", "effect_size": ev["H4"]["coef"],
+         "test": "OLS of log price change on a constant (= paired t-test)",
+         **{k: ev["H4"][k] for k in keys}},
+        {"hypothesis": "H5: imports differ by country size",
+         "magnitude": f"Same wind, 10x the size: {ev['H5']['fold']:.0f}x the imports "
+                      f"({ev['H5']['fold_low']:.0f}x to {ev['H5']['fold_high']:.0f}x)",
+         "effect_measure": "elasticity", "effect_size": ev["H5"]["coef"],
+         "test": "Log-log OLS, wind + size (Model B)", **{k: ev["H5"][k] for k in keys}},
+    ])

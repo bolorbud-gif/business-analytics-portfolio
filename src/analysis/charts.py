@@ -18,10 +18,8 @@ from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
 ROOT = Path(__file__).resolve().parents[2]
 FIGURES = ROOT / "docs" / "figures"
 
-SURFACE, INK, INK_2, MUTED = "#fcfcfb", "#0b0b0b", "#52514e", "#898781"
-GRID, AXIS, NEUTRAL = "#e1e0d9", "#c3c2b7", "#f0efec"
-BLUE, ORANGE, AQUA, RED = "#2a78d6", "#eb6834", "#1baf7a", "#e34948"
-SERIES = [BLUE, ORANGE, AQUA]  # fixed order; never more than three series in one chart
+from src.analysis.palette import (AQUA, AXIS, BLUE, GRID, INK, INK_2, MUTED,  # noqa: F401
+                                  NEUTRAL, ORANGE, RED, SERIES, SURFACE)
 DIVERGING = LinearSegmentedColormap.from_list("blue_gray_red", [RED, NEUTRAL, BLUE])
 
 
@@ -87,20 +85,21 @@ def save(fig, name: str, folder: Path = FIGURES) -> Path:
     return path
 
 
-def show(fig, name: str | None = None, save_figure: bool = True, folder: Path = FIGURES):
+def show(fig, name: str | None = None, save_figure: bool = True, folder: Path = FIGURES) -> None:
     """Display a figure in a notebook, save it with save() if asked, then close it.
 
     Notebooks pass save_figure=False when running on the synthetic sample, so sample charts
-    never overwrite the real ones in docs/figures/. Returns the saved PNG path, if any.
+    never overwrite the real ones in docs/figures/. Returns nothing, so a notebook cell that
+    ends with show() prints no file path (which would differ from machine to machine).
     """
-    path = save(fig, name, folder) if save_figure and name else None
+    if save_figure and name:
+        save(fig, name, folder)
     try:
         from IPython.display import display
         display(fig)
     except ImportError:  # plain Python: nothing to display in
         pass
     plt.close(fig)
-    return path
 
 
 def market_share_bars(shares: pd.DataFrame, title: str, subtitle: str, source: str,

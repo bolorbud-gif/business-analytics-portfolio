@@ -1,0 +1,12 @@
+{
+  "created_utc": "2026-11-21T05:43:28+00:00",
+  "data_sha256": "f6ef6ad6efa06fb010311536fed57f50345aceaaff366963fd95b7b4bbe68e7f",
+  "database": "rare_earth.db",
+  "git_commit": "14ddfc2a6ecfc273d2c6655321e45ca4a075df95",
+  "source": "real",
+  "uncommitted_changes": true,
+  "versions": {
+    "pandas": "3.0.5",
+    "scikit-learn": "1.9.0"
+  }
+}

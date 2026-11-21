@@ -1,0 +1,6 @@
+hypothesis,magnitude,effect_measure,effect_size,effect,test,n,statistic,p,p_holm,statistically_significant,result
+H1: imports rise with wind capacity,"10x the wind capacity, 8.7x the imports",Spearman rho,0.5239169653,moderate positive,Spearman correlation,102,0.5239169653,1.596525921e-08,6.386103683e-08,True,Supported
+H2: wind matters after controlling for size,"Same size, 10x the wind: 1.6x the imports (95% CI 0.76x to 3.3x)",partial r,0.1311790844,very weak,Partial correlation (log10),102,0.1311790844,0.1910150904,0.2566023422,False,Not supported
+"H3: faster wind growth, faster import growth (2024)","Median import growth +50% where wind grew most, -11% elsewhere",Spearman rho,0.2481818976,weak positive,Spearman correlation,49,0.2481818976,0.08553411407,0.2566023422,False,Not supported
+H4: buyers paid less per kg in 2024 than 2023,Median buyer -11% (95% CI -26% to +4%); 62% paid less,rank-biserial r,-0.2859216255,weak negative,Sign test (paired),52,32,0.1263470758,0.2566023422,False,Not supported
+H5: imports differ by country size,Large countries' median imports 325x small countries',epsilon-squared,0.5007873206,large,Kruskal-Wallis,102,50.57951939,1.039433996e-11,5.19716998e-11,True,Supported

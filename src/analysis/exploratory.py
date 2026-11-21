@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 REAL_DB = ROOT / "data" / "processed" / "rare_earth.db"
 SAMPLE_DB = ROOT / "data" / "processed" / "rare_earth_sample.db"
 TABLES = ["countries", "products", "energy_sources", "trade_flows", "electricity_generation"]
+SIZE_GROUPS = ["Small", "Medium", "Large"]  # terciles of total generation, smallest first
 
 
 # --- Connecting -----------------------------------------------------------------------
@@ -179,7 +180,7 @@ def analysis_sample(panel: pd.DataFrame, include_non_buyers: bool = False) -> pd
     else:
         buys = imports > 0
     d = panel[buys & (panel["wind_capacity_gw"] > 0) & (panel["total_generation_twh"] > 0)].copy()
-    d["size_group"] = pd.qcut(d["total_generation_twh"], 3, labels=["Small", "Medium", "Large"])
+    d["size_group"] = pd.qcut(d["total_generation_twh"], 3, labels=SIZE_GROUPS)
     return d.reset_index(drop=True)
 
 
@@ -236,6 +237,16 @@ def buyer_volumes(trade: pd.DataFrame, year: int, trade_flow: str = "Export") ->
     """Total kg per partner for one year and direction (Export = what each country bought)."""
     rows = trade[(trade["trade_flow"] == trade_flow) & (trade["year"] == year)]
     return rows.groupby("partner")["quantity_kg"].sum()
+
+
+def buyers_by_year(trade: pd.DataFrame, trade_flow: str = "Export") -> pd.DataFrame:
+    """Every partner in every year: kg, value, price (USD per kg) and share of that year's
+    volume, largest buyer first within each year."""
+    rows = trade[trade["trade_flow"] == trade_flow]
+    out = rows.groupby(["year", "partner"], as_index=False)[["quantity_kg", "trade_value_kusd"]].sum()
+    out["usd_per_kg"] = out["trade_value_kusd"] * 1000 / out["quantity_kg"]
+    out["share_pct"] = out["quantity_kg"] / out.groupby("year")["quantity_kg"].transform("sum") * 100
+    return out.sort_values(["year", "quantity_kg"], ascending=[True, False], ignore_index=True)
 
 
 def market_shares(df: pd.DataFrame, by: str, value: str, top: int = 10) -> pd.DataFrame:

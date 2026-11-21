@@ -7,7 +7,8 @@ Three modules, each usable on its own:
 - ``statistical``: correlation, partial correlation, log-log regression, hypothesis tests
   (normality, paired change, group comparison, bootstrap, Holm correction) and
   regression diagnostics.
-- ``charts``: the visualization suite (Matplotlib + Seaborn) in one consistent style.
+- ``charts``: the visualization suite (Matplotlib + Seaborn) in one consistent style, with
+  its colours in ``palette`` (shared with the dashboard).
 
 Typical use::
 
@@ -20,6 +21,14 @@ Typical use::
 Function reference: docs/api_reference.md.
 """
 
-from src.analysis import charts, exploratory, statistical
+import importlib
 
 __all__ = ["charts", "exploratory", "statistical"]
+
+
+def __getattr__(name):
+    """Load a module on first use (``src.analysis.charts``), so importing one module, such as the
+    palette in the dashboard, doesn't load Matplotlib, Seaborn, statsmodels and Pandera."""
+    if name in __all__ or name == "palette":
+        return importlib.import_module(f"{__name__}.{name}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -51,6 +51,11 @@
   Assignment 5 analysis. I then checked it against the course's analytics checklist, which led to
   last year's power data as features (available at prediction time), a threshold set by the cost of
   each error, provenance in the saved model, and recommended actions.
+- **Assignment 7 (Dashboard):** Used Claude Code to build the Streamlit app (`src/dashboard/`), the
+  results snapshot with its rebuild-and-compare check (`scripts/deploy.py`), the tests and
+  `docs/deployment.md`, following the course's dashboard process and checklist. I decided to commit the
+  country-level results snapshot (`data/published/`); the raw files stay out. The ninety-second test
+  with someone who hasn't seen the project is mine to run.
 
 ## Where I deliberately did not use it
 
@@ -91,6 +96,6 @@
 ## Verification
 
 - I checked Japan's 2024 import growth by hand (63.0%), ran the pipeline twice to confirm
-  nothing changed, and reviewed the quality report. 111 automated tests cover the pipeline
-  and the analysis functions, and the analytics engine.
+  nothing changed, and reviewed the quality report. 147 automated tests cover the pipeline,
+  the analysis functions, the analytics engine and every page of the dashboard.
 - I compile all of my work in one folder and save its version history in Google Drive.

@@ -19,6 +19,8 @@ Exploratory analysis: open the Assignment 4 database, check its quality, describ
   Each partner's volume and price (USD per kg) in both years, for partners present in both.
 - **`buyer_volumes`** `def buyer_volumes(trade: pandas.DataFrame, year: int, trade_flow: str = 'Export') -> pandas.Series`
   Total kg per partner for one year and direction (Export = what each country bought).
+- **`buyers_by_year`** `def buyers_by_year(trade: pandas.DataFrame, trade_flow: str = 'Export') -> pandas.DataFrame`
+  Every partner in every year: kg, value, price (USD per kg) and share of that year's volume, largest buyer first within each year.
 - **`check_database`** `def check_database(con) -> pandas.DataFrame`
   Run data-quality checks on the database. One row per check: check, passed, detail.
 - **`concentration`** `def concentration(values: pandas.Series) -> dict`
@@ -94,6 +96,8 @@ Statistical analysis: correlation, partial correlation, regression, hypothesis t
   Each entity's change from `start` to `end`, for entities with positive values of every column in both periods.
 - **`log_ratio_to_pct`** `def log_ratio_to_pct(v: float) -> float`
   A natural-log ratio as a percent change: log(0.5) -> -50.0.
+- **`main_hypothesis_tests`** `def main_hypothesis_tests(sample: pandas.DataFrame, growth: pandas.DataFrame, exports: pandas.DataFrame, order: list = ('Small', 'Medium', 'Large'), start: int = 2023, end: int = 2024) -> pandas.DataFrame`
+  H1-H5 with the tests chosen after the assumption checks, Holm-corrected.
 - **`normality_test`** `def normality_test(values: pandas.Series, log: bool = False, alpha: float = 0.05) -> dict`
   Shapiro-Wilk test of normality (on log10 values if log=True). Low p = not normal.
 - **`paired_change`** `def paired_change(df: pandas.DataFrame, entity: str, period: str, value: str, start, end, test: str = 'wilcoxon') -> dict`
@@ -104,6 +108,8 @@ Statistical analysis: correlation, partial correlation, regression, hypothesis t
   Correlation of x and y after removing what the controls explain.
 - **`regression_diagnostics`** `def regression_diagnostics(result) -> pandas.DataFrame`
   Assumption checks for an OLS result: unequal variance, residual normality, collinearity.
+- **`regression_hypothesis_checks`** `def regression_hypothesis_checks(sample: pandas.DataFrame, panel: pandas.DataFrame, exports: pandas.DataFrame, start: int = 2023, end: int = 2024) -> pandas.DataFrame`
+  Each hypothesis re-tested as a regression, with a residual normality check, Holm-corrected.
 - **`residualize`** `def residualize(df: pandas.DataFrame, column: str, controls: list[str]) -> pandas.Series`
   What is left of `column` after a linear fit on the controls (with intercept).
 - **`size_adjusted_residuals`** `def size_adjusted_residuals(df: pandas.DataFrame, x: str, y: str, controls: list[str], log: bool = True) -> pandas.DataFrame`
@@ -151,9 +157,9 @@ Charts for the exploratory analysis (Matplotlib + Seaborn).
   Scatter of one relationship, to show what a reported correlation looks like.
 - **`roc_chart`** `def roc_chart(curves: dict, title: str, subtitle: str, source: str, marker: tuple | None = None)`
   ROC curves (true-positive rate against false-positive rate), each labelled with its AUC, against the diagonal of a model that guesses (AUC 0.5).
-- **`save`** `def save(fig, name: str, folder: pathlib.Path = WindowsPath('C:/Users/mcobp/business-analytics-portfolio/docs/figures')) -> pathlib.Path`
+- **`save`** `def save(fig, name: str, folder: pathlib.Path = ROOT / 'docs/figures') -> pathlib.Path`
   Save a figure as 300 dpi PNG and vector SVG in docs/figures/ (or `folder`).
-- **`show`** `def show(fig, name: str | None = None, save_figure: bool = True, folder: pathlib.Path = WindowsPath('C:/Users/mcobp/business-analytics-portfolio/docs/figures'))`
+- **`show`** `def show(fig, name: str | None = None, save_figure: bool = True, folder: pathlib.Path = ROOT / 'docs/figures') -> None`
   Display a figure in a notebook, save it with save() if asked, then close it.
 
 ## `src.modeling`
@@ -172,6 +178,8 @@ Train the analytics engine: data, pipelines, split, tuning, final evaluation, sa
   The models to compare, each as (pipeline, hyperparameter grid). The first is always the dummy baseline, which ignores the features.
 - **`data_fingerprint`** `def data_fingerprint(data: pandas.DataFrame, columns: list[str]) -> str`
   SHA-256 of the training rows (the given columns, in order): the same data always gives the same fingerprint, so a saved model can be traced to the exact data behind it.
+- **`evaluation_artifacts`** `def evaluation_artifacts(engine: dict, config: dict) -> dict`
+  The evidence behind the engine's scores, computed once at training time and saved with it, so a reviewer (or the dashboard) can inspect it without retraining. Tables:
 - **`feature_columns`** `def feature_columns(config: dict) -> list[str]`
   Every feature the models use, size features first.
 - **`final_model`** `def final_model(task: str, name: str, params: dict, data: pandas.DataFrame, config: dict)`
@@ -180,9 +188,9 @@ Train the analytics engine: data, pipelines, split, tuning, final evaluation, sa
   Combine one task's model selection and test results with its final pipeline, refitted on all the data with the tuned hyperparameters.
 - **`fit_and_test`** `def fit_and_test(task: str, name: str, train: pandas.DataFrame, test: pandas.DataFrame, config: dict, group: str = 'country') -> dict`
   Tune the chosen candidate on the whole training set, then score it once on the test set. The dummy baseline is scored on the same test set for comparison. For classification the probability threshold is also chosen on the training set: the one with the lowest expected business cost (config costs).
-- **`git_state`** `def git_state(root: pathlib.Path = WindowsPath('C:/Users/mcobp/business-analytics-portfolio')) -> dict`
+- **`git_state`** `def git_state(root: pathlib.Path = ROOT) -> dict`
   The code version: current git commit and whether there were uncommitted changes (None if git isn't available).
-- **`load_config`** `def load_config(path: pathlib.Path = WindowsPath('C:/Users/mcobp/business-analytics-portfolio/config/model_params.yaml')) -> dict`
+- **`load_config`** `def load_config(path: pathlib.Path = ROOT / 'config/model_params.yaml') -> dict`
   Read the engine's settings (features, target, split, tuning grids, output path).
 - **`load_dataset`** `def load_dataset(con, config: dict, lag: int | None = None) -> pandas.DataFrame`
   The modeling data: the Assignment 5 analysis sample (country-years with imports, wind capacity and total generation all positive), with the two targets added.
@@ -191,7 +199,7 @@ Train the analytics engine: data, pipelines, split, tuning, final evaluation, sa
 - **`main`** `def main(argv=None) -> int`
   Command line: train, evaluate and save the engine.
 - **`model_bundle`** `def model_bundle(engine: dict, config: dict, source: str) -> dict`
-  What gets saved: both final pipelines (preprocessing included) plus what's needed to use and audit them: problem types, features, target, threshold, business costs, scores and provenance.
+  What gets saved: both final pipelines (preprocessing included) plus what's needed to use and audit them: problem types, features, target, threshold, business costs, scores, the evaluation evidence (evaluation_artifacts) and provenance.
 - **`provenance`** `def provenance(data: pandas.DataFrame, config: dict, source: str) -> dict`
   Where a saved model came from: data (source, size, years, fingerprint), code (git commit), settings (a full copy of the config, random_state) and environment.
 - **`safe_log10`** `def safe_log10(X)`
@@ -272,6 +280,80 @@ Use the saved analytics engine: load it, check it, predict.
   Predictions for each row of `features` (which needs every column in bundle["features"]; missing values are allowed and filled by the pipeline).
 - **`recommend`** `def recommend(table: pandas.DataFrame, bundle: dict) -> pandas.DataFrame`
   Add a recommended action (and the reason) to an expected_vs_actual table.
+
+## `src.dashboard`
+
+
+
+### `src.dashboard.data`
+
+The dashboard's data-access layer: one results snapshot, built from two sources.
+
+- **`SnapshotError`** `class SnapshotError(...)`
+  A snapshot folder is missing, incomplete or unreadable; the message says how to rebuild it.
+- **`build_snapshot`** `def build_snapshot(con, bundle: dict, real: bool = True, source: str = '') -> dict`
+  Every table and headline number the dashboard shows: database_tables() from the Assignment 4 database plus engine_tables() from the Assignment 6 artifact.
+- **`compare_snapshots`** `def compare_snapshots(a: pathlib.Path, b: pathlib.Path, rtol: float = 1e-06) -> list[str]`
+  Differences between two snapshot folders (empty list = the same results).
+- **`database_tables`** `def database_tables(con) -> tuple[dict, dict]`
+  From the Assignment 4 database: data quality, concentration, prices, wind, the hypothesis tests and the models (Assignment 5 functions).
+- **`engine_tables`** `def engine_tables(bundle: dict, features_now: pandas.DataFrame, features_next: pandas.DataFrame) -> tuple[dict, dict]`
+  From the Assignment 6 artifact: cross-validation, test scores with intervals, predictions and the threshold explorer's inputs (all saved in the bundle at training time), plus the recommended actions and the forecast made with the saved pipelines.
+- **`load_engine_artifact`** `def load_engine_artifact(path: pathlib.Path) -> dict`
+  Load a saved engine bundle and check it carries the evaluation evidence the dashboard reads.
+- **`load_snapshot`** `def load_snapshot(path: pathlib.Path) -> dict`
+  Read a snapshot folder back: {"tables": {name: DataFrame}, "summary": ..., "meta": ...}.
+- **`relative_to_root`** `def relative_to_root(path: pathlib.Path) -> str`
+  A path as shown to people: relative to the project root when it is inside it.
+- **`save_snapshot`** `def save_snapshot(snapshot: dict, out_dir: pathlib.Path) -> pathlib.Path`
+  Write each table as CSV and the summary and metadata as JSON.
+- **`train_engine_artifact`** `def train_engine_artifact(con, real: bool, path: pathlib.Path, source: str = '', config: dict | None = None) -> pathlib.Path`
+  Train the Assignment 6 engine and save its bundle (pipelines, evaluation, provenance).
+
+### `src.dashboard.components`
+
+Reusable pieces of the dashboard: number formatting, KPI tiles and interactive Altair charts.
+
+- **`empty`** `def empty(message: str) -> None`
+  Graceful empty state: say why nothing is shown and what to change.
+- **`fmt_kg`** `def fmt_kg(kg) -> str`
+  Kilograms in a readable unit: 850 kg, 12.3 t, 4,965 t.
+- **`fmt_pct`** `def fmt_pct(value, signed: bool = False, digits: int = 0) -> str`
+  A percentage: 83%, or +5.7% / -35% when signed.
+- **`fold`** `def fold(elasticity: float, factor: float = 10) -> str`
+  Business reading of an elasticity: 10x the driver goes with this many times the outcome.
+- **`forecast_bars`** `def forecast_bars(d: pandas.DataFrame, top: int) -> altair.vegalite.v6.api.Chart`
+  The largest expected buyers, coloured by whether the engine calls them major buyers.
+- **`freshness`** `def freshness(text: str) -> None`
+  The data-freshness line under each page title: which years the data cover and when the results were built.
+- **`interval_dots`** `def interval_dots(d: pandas.DataFrame, label: str, value: str, low: str, high: str, title: str, ytitle: str, highlight: str | None = None, baseline: str | None = None, zero: bool = False) -> altair.vegalite.v6.api.Chart`
+  Estimates with intervals (one row each): baseline grey, highlighted row orange, others blue.
+- **`kpi_row`** `def kpi_row(items: list[tuple], per_row: int | None = None) -> None`
+  KPI tiles: (label, value, explanation shown on hover[, comparison]). Up to four share a row; longer lists wrap three to a row, so labels aren't cut off.
+- **`log_scatter`** `def log_scatter(d: pandas.DataFrame, x: str, y: str, xtitle: str, ytitle: str, groups: list[str], trend: bool = True) -> altair.vegalite.v6.api.Chart`
+  Country-years on log-log axes, coloured by size group, with a power-law trend line (a straight line on log axes: its slope is the elasticity). No wheel zoom: it would capture page scrolling.
+- **`multiplier_chart`** `def multiplier_chart(rows: pandas.DataFrame) -> altair.vegalite.v6.api.Chart`
+  '10x the driver goes with k x the imports', with 95% intervals, on a log scale with a line at 1x (no effect). rows: label, driver (Wind or Size), fold, low, high.
+- **`notes`** `def notes(sample: str, uncertainty: str, provenance: str, limitation: str) -> None`
+  The 'About these numbers' block at the foot of every page: the sample behind the page, how uncertain its numbers are, where they come from and what they can't show.
+- **`predicted_vs_actual`** `def predicted_vs_actual(d: pandas.DataFrame) -> altair.vegalite.v6.api.Chart`
+  Test countries: predicted against actual imports on log axes, with the perfect-prediction line and lines where a prediction is 10 times too high or too low.
+- **`price_change_bars`** `def price_change_bars(changes: pandas.DataFrame) -> altair.vegalite.v6.api.Chart`
+  Each buyer's price per kg, end over start, on a log scale centred on 1 (no change), so a halving and a doubling are the same length. Falls and rises in two colours.
+- **`residual_scatter`** `def residual_scatter(d: pandas.DataFrame, groups: list[str]) -> altair.vegalite.v6.api.Chart`
+  Wind against imports with country size removed from both (log10 residuals).
+- **`roc_chart`** `def roc_chart(curves: dict, point: tuple | None = None) -> altair.vegalite.v6.api.Chart`
+  ROC curves {name: (fpr, tpr, auc)} against the guessing diagonal, with an optional operating point (fpr, tpr, label).
+- **`share_bars`** `def share_bars(buyers: pandas.DataFrame, top: int) -> altair.vegalite.v6.api.Chart`
+  Ranked horizontal bars: each buyer's share of China's export volume.
+- **`show`** `def show(chart: altair.vegalite.v6.api.Chart, title: str, subtitle: str | None = None) -> None`
+  Render an Altair chart at full width under its title (required: every chart says what it shows).
+- **`source_banner`** `def source_banner(meta: dict) -> None`
+  Say which data the dashboard is showing; warn loudly if it is synthetic.
+- **`threshold_lines`** `def threshold_lines(table: pandas.DataFrame, threshold: float) -> altair.vegalite.v6.api.Chart`
+  Precision, recall and F1 across thresholds, with a rule at the threshold in use.
+- **`trend_lines`** `def trend_lines(trend: pandas.DataFrame, series: list[str], labels: list[str], title: str) -> altair.vegalite.v6.api.Chart`
+  Up to three lines over time, with points, a legend and tooltips.
 
 ## `src.data_pipeline`
 
